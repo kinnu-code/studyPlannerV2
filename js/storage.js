@@ -20,6 +20,7 @@
     apiKey:                  '',
     model:                   'gpt-4o',
     sessionDuration:         20,     // minutes (display only)
+    learningMode:            'interleaved', // 'interleaved' | 'sequential'
     maxNewTopicsPerDay:      4,
     postMockSameDay:         true,   // false = post-mock occupies next study day
     maxDaysBetweenPractice:  7,      // max gap (days) between learn→practice and practice→practice

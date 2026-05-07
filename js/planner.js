@@ -359,12 +359,22 @@
       learningStarted:      t.learningStarted,
     }));
 
-    const { maxNewTopicsPerDay, maxDaysBetweenPractice = 7 } = settings;
-    const learningQueue  = states.filter(t => t.remainingLN > 0);
-    let   currentLearner = learningQueue.shift() || null;
+    const {
+      maxNewTopicsPerDay,
+      maxDaysBetweenPractice = 7,
+      learningMode           = 'interleaved',
+    } = settings;
+
+    const isSequential = learningMode === 'sequential';
+
+    // Interleaved mode: pre-build a learning queue.
+    const learningQueue  = isSequential ? [] : states.filter(t => t.remainingLN > 0);
+    let   currentLearner = isSequential ? null : (learningQueue.shift() || null);
+
+    // Sequential mode: index into states for the topic currently being worked on.
+    let seqIdx = 0;
 
     // Prime SR clock for topics starting in Reviewing state.
-    // First review is always 1 day from plan start (we don't know their last review date).
     for (const topic of states) {
       if (topic.startingState === 'Reviewing') {
         topic.nextReviewIndex      = 0;
@@ -372,18 +382,20 @@
       }
     }
 
-    // Set initial practice deadline for topics already past learning at plan start.
-    for (const topic of states) {
-      if (topic.remainingLN === 0 && topic.remainingPN > 0) {
-        topic.practiceDeadline = addDays(startDate, maxDaysBetweenPractice);
+    // Interleaved only: set initial practice deadline for topics already past learning at plan start.
+    if (!isSequential) {
+      for (const topic of states) {
+        if (topic.remainingLN === 0 && topic.remainingPN > 0) {
+          topic.practiceDeadline = addDays(startDate, maxDaysBetweenPractice);
+        }
       }
     }
 
     for (const day of calendar) {
       if (day.blockedBy || day.totalSessions === 0) continue;
 
-      // 0. All due reviews — before learning or practice so SR schedule is never bumped.
-      //    Sort: first reviews (index 0) before subsequent ones; within tier, most-overdue first.
+      // Step 0: all due reviews — before learning or practice.
+      //   Sort: first reviews (index 0) first; within tier, most-overdue first.
       const dueReviews = states
         .filter(t => t.nextReviewTargetDate !== null &&
                      t.nextReviewTargetDate.getTime() <= day.date.getTime())
@@ -399,28 +411,50 @@
         scheduleReview(day, topic, srIntervals);
       }
 
-      // 1. Learning — always before practice so learning is never delayed.
-      currentLearner = scheduleLearningForDay(day, learningQueue, currentLearner, maxNewTopicsPerDay);
+      if (isSequential) {
+        // Sequential mode: complete one topic's LN then PN before starting the next.
+        while (day.sessions.length < day.totalSessions) {
+          // Advance past topics with no remaining learn/practice work.
+          while (seqIdx < states.length &&
+                 states[seqIdx].remainingLN === 0 && states[seqIdx].remainingPN === 0) {
+            seqIdx++;
+          }
+          if (seqIdx >= states.length) break;
 
-      // Set practice deadline for topics that just finished all learning sessions today.
-      for (const topic of states) {
-        if (
-          topic.remainingLN === 0 &&
-          topic.remainingPN > 0 &&
-          topic.practiceDeadline === null &&
-          topic.learningStarted
-        ) {
-          topic.practiceDeadline = addDays(day.date, maxDaysBetweenPractice);
+          const topic = states[seqIdx];
+          if (topic.remainingLN > 0) {
+            const isFirstSession = !topic.learningStarted;
+            if (isFirstSession) topic.learningStarted = true;
+            day.sessions.push({ topicId: topic.id, activityType: 'learn', isFirstSession });
+            topic.remainingLN--;
+          } else {
+            // All learning done — now practice.
+            schedulePractice(day, topic, maxDaysBetweenPractice);
+          }
         }
+      } else {
+        // Interleaved mode: steps 1 and 2 as before.
+
+        // Step 1: learning — always before practice.
+        currentLearner = scheduleLearningForDay(day, learningQueue, currentLearner, maxNewTopicsPerDay);
+
+        // Set practice deadline for topics that just finished all learning today.
+        for (const topic of states) {
+          if (
+            topic.remainingLN === 0 &&
+            topic.remainingPN > 0 &&
+            topic.practiceDeadline === null &&
+            topic.learningStarted
+          ) {
+            topic.practiceDeadline = addDays(day.date, maxDaysBetweenPractice);
+          }
+        }
+
+        // Step 2: practice MCQs — urgent first, then normal.
+        scheduleMCQsForDay(day, states, maxDaysBetweenPractice);
       }
 
-      // 2. Practice MCQs — urgent topics (deadline reached) scheduled before non-urgent.
-      //    All practice is after learning so learning progress is never blocked.
-      scheduleMCQsForDay(day, states, maxDaysBetweenPractice);
-
       // Prime SR clock for any topic that just finished all PN on this day.
-      // First review is always 1 day after practice completes; srIntervals governs
-      // the gaps between consecutive reviews from that point on.
       for (const topic of states) {
         if (
           topic.pnCompleteDate &&

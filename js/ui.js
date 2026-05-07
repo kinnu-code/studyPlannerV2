@@ -830,6 +830,22 @@ window.StudyApp = {
           </div>
 
           <div class="settings-section">
+            <h3>Learning Mode</h3>
+            <div class="mode-cards">
+              <div class="mode-card" :class="{ selected: settings.learningMode === 'interleaved' }"
+                   @click="settings.learningMode = 'interleaved'">
+                <h4>Interleaved</h4>
+                <p>Learn topics in parallel. Once a topic's learning is done, practice sessions are spread across the schedule alongside other topics.</p>
+              </div>
+              <div class="mode-card" :class="{ selected: settings.learningMode === 'sequential' }"
+                   @click="settings.learningMode = 'sequential'">
+                <h4>Sequential</h4>
+                <p>Fully complete one topic (all learning + all practice) before starting the next. Reviews still happen on their spaced-repetition schedule.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
             <div class="expandable">
               <div class="expandable-header" @click="advancedExpanded = !advancedExpanded">
                 Advanced Settings
@@ -1274,6 +1290,7 @@ window.StudyApp = {
             settings: {
               lnTable:                this.settings.lnTable,
               pnTable:                this.settings.pnTable,
+              learningMode:           this.settings.learningMode || 'interleaved',
               maxNewTopicsPerDay:     this.settings.maxNewTopicsPerDay,
               maxDaysBetweenPractice: this.settings.maxDaysBetweenPractice || 7,
             },
@@ -1522,8 +1539,8 @@ window.StudyApp = {
       this.error     = null;
 
       // Regenerate if scheduling-relevant settings changed and a plan exists
-      const SCHEDULING_KEYS = ['lnTable', 'pnTable', 'maxNewTopicsPerDay', 'postMockSameDay',
-                                'maxDaysBetweenPractice', 'srIntervals'];
+      const SCHEDULING_KEYS = ['lnTable', 'pnTable', 'learningMode', 'maxNewTopicsPerDay',
+                                'postMockSameDay', 'maxDaysBetweenPractice', 'srIntervals'];
       const prev = this.settingsSnapshot ? JSON.parse(this.settingsSnapshot) : {};
       const scheduleChanged = SCHEDULING_KEYS.some(
         k => JSON.stringify(this.settings[k]) !== JSON.stringify(prev[k])

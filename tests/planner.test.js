@@ -786,5 +786,97 @@ describe('T13 – Per-topic session integrity', () => {
   });
 });
 
+// ─── T14  Sequential learning mode ───────────────────────────────────────────
+describe('T14 – Sequential learning mode', () => {
+
+  function makeSeqPlan(overrides = {}) {
+    return planner.generatePlan({
+      topics:    TOPICS,
+      startDate: START,
+      examDate:  EXAM,
+      firstWeek: FIRST_WEEK,
+      lastWeek:  LAST_WEEK,
+      rampMode:  'linear',
+      numMocks:  0,
+      srIntervals: SR,
+      settings:  { ...SETTINGS, learningMode: 'sequential' },
+      ...overrides,
+    });
+  }
+
+  test('T14.1 correct total learn and practice session counts in sequential mode', () => {
+    const { calendar } = makeSeqPlan();
+    const learns   = calendar.flatMap(d => d.sessions).filter(s => s.activityType === 'learn').length;
+    const practices = calendar.flatMap(d => d.sessions).filter(s => s.activityType === 'practice').length;
+    expect(learns).toBe(1 + 2 + 3);
+    expect(practices).toBe(3 + 4 + 5);
+  });
+
+  test('T14.2 topic B learning does not start until topic A is fully practiced', () => {
+    const { calendar } = makeSeqPlan();
+    const allSessions = calendar.flatMap(d => d.sessions.map(s => ({ date: d.date, ...s })));
+
+    // Last practice session for topic A
+    const aPractices = allSessions.filter(s => s.topicId === 'A' && s.activityType === 'practice');
+    const aLastPractice = aPractices[aPractices.length - 1];
+
+    // First learn session for topic B
+    const bFirstLearn = allSessions.find(s => s.topicId === 'B' && s.activityType === 'learn');
+
+    expect(aLastPractice).toBeTruthy();
+    expect(bFirstLearn).toBeTruthy();
+    expect(bFirstLearn.date.getTime()).toBeGreaterThanOrEqual(aLastPractice.date.getTime());
+  });
+
+  test('T14.3 all practice for topic A comes before any learn/practice for topic B', () => {
+    const { calendar } = makeSeqPlan();
+    const allSessions = calendar.flatMap(d => d.sessions.map(s => ({ date: d.date, ...s })));
+
+    const aLastPractice = [...allSessions.filter(s => s.topicId === 'A' && s.activityType === 'practice')].pop();
+    const bFirstWork    = allSessions.find(s => s.topicId === 'B' &&
+                           (s.activityType === 'learn' || s.activityType === 'practice'));
+
+    if (!aLastPractice || !bFirstWork) return;
+    expect(bFirstWork.date.getTime()).toBeGreaterThanOrEqual(aLastPractice.date.getTime());
+  });
+
+  test('T14.4 no practice session is interleaved with learning of the same topic', () => {
+    const { calendar } = makeSeqPlan();
+    for (const topicId of ['A', 'B', 'C']) {
+      const allSessions = calendar.flatMap(d => d.sessions.map(s => ({ date: d.date, ...s })))
+        .filter(s => s.topicId === topicId);
+      const firstPractice = allSessions.find(s => s.activityType === 'practice');
+      const lastLearn     = [...allSessions.filter(s => s.activityType === 'learn')].pop();
+      if (!firstPractice || !lastLearn) continue;
+      expect(firstPractice.date.getTime()).toBeGreaterThanOrEqual(lastLearn.date.getTime());
+    }
+  });
+
+  test('T14.5 reviews still fire correctly in sequential mode', () => {
+    const { calendar, topics } = makeSeqPlan();
+    for (const topic of topics) {
+      if (!topic.pnCompleteDate) continue;
+      const reviews = calendar
+        .filter(d => d.sessions.some(s => s.topicId === topic.id && s.activityType === 'review'))
+        .map(d => d.date.getTime());
+      if (reviews.length === 0) continue;
+      const earliest = Math.min(...reviews);
+      expect(earliest).toBeGreaterThanOrEqual(topic.pnCompleteDate.getTime() + 86400000);
+    }
+  });
+
+  test('T14.6 per-topic session counts are exact in sequential mode', () => {
+    const { calendar } = makeSeqPlan();
+    const count = (id, type) => calendar.flatMap(d => d.sessions)
+      .filter(s => s.topicId === id && s.activityType === type).length;
+    expect(count('A', 'learn')).toBe(1);
+    expect(count('B', 'learn')).toBe(2);
+    expect(count('C', 'learn')).toBe(3);
+    expect(count('A', 'practice')).toBe(3);
+    expect(count('B', 'practice')).toBe(4);
+    expect(count('C', 'practice')).toBe(5);
+  });
+});
+
 // ─── Run ─────────────────────────────────────────────────────────────────────
 runAll();
