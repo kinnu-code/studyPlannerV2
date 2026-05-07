@@ -830,28 +830,30 @@ window.StudyApp = {
           </div>
 
           <div class="settings-section">
-            <h3>Learning Mode</h3>
-            <div class="mode-cards">
-              <div class="mode-card" :class="{ selected: settings.learningMode === 'interleaved' }"
-                   @click="settings.learningMode = 'interleaved'">
-                <h4>Interleaved</h4>
-                <p>Learn topics in parallel. Once a topic's learning is done, practice sessions are spread across the schedule alongside other topics.</p>
-              </div>
-              <div class="mode-card" :class="{ selected: settings.learningMode === 'sequential' }"
-                   @click="settings.learningMode = 'sequential'">
-                <h4>Sequential</h4>
-                <p>Fully complete one topic (all learning + all practice) before starting the next. Reviews still happen on their spaced-repetition schedule.</p>
-              </div>
-            </div>
-          </div>
-
-          <div class="settings-section">
             <div class="expandable">
               <div class="expandable-header" @click="advancedExpanded = !advancedExpanded">
                 Advanced Settings
                 <span>{{ advancedExpanded ? '▲' : '▼' }}</span>
               </div>
               <div class="expandable-body" v-if="advancedExpanded">
+
+                <div class="form-group">
+                  <label>Learning mode</label>
+                  <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+                    <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+                      <input type="radio" value="interleaved" v-model="settings.learningMode" style="margin-top:3px;flex-shrink:0" />
+                      <span>
+                        <strong>Interleaved</strong> — once a topic&#39;s learning sessions are done, its practice MCQs are distributed across the schedule alongside other topics.
+                      </span>
+                    </label>
+                    <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+                      <input type="radio" value="sequential" v-model="settings.learningMode" style="margin-top:3px;flex-shrink:0" />
+                      <span>
+                        <strong>Sequential</strong> — fully complete one topic (all learning + all practice MCQs) before moving to the next. Reviews still follow the spaced-repetition schedule.
+                      </span>
+                    </label>
+                  </div>
+                </div>
 
                 <div class="form-group">
                   <label>Session duration (display only)</label>
