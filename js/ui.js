@@ -1322,12 +1322,12 @@ window.StudyApp = {
           StudyStorage.saveCurrentPlan(this.buildPlanData());
 
           this.navigate('step4');
-          // Render chart after Vue paints the canvas into the DOM
-          this.$nextTick(() => this.renderChart());
         } catch (e) {
           this.error = e.message;
         } finally {
           this.loading = false;
+          // Render chart after Vue repaints with loading=false (canvas back in DOM).
+          this.$nextTick(() => this.renderChart());
         }
       }, 50);
     },
@@ -1581,13 +1581,12 @@ window.StudyApp = {
 
   watch: {
     activeTab(newTab) {
-      if (newTab === 'trajectory') {
+      if (newTab === 'trajectory' && !this.loading) {
         this.$nextTick(() => this.renderChart());
       }
     },
-    // Re-render chart whenever we return to step4 (e.g. after regeneration on the same tab)
     screen(newScreen) {
-      if (newScreen === 'step4' && this.activeTab === 'trajectory') {
+      if (newScreen === 'step4' && this.activeTab === 'trajectory' && !this.loading) {
         this.$nextTick(() => this.renderChart());
       }
     },
