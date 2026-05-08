@@ -368,10 +368,15 @@ window.StudyApp = {
       <div class="card">
         <div class="card-body">
           <div class="section-title">Review & Confirm Topics</div>
-          <div class="section-sub">
-            {{ studyTopicCount }} study topic{{ studyTopicCount !== 1 ? 's' : '' }}
-            <span v-if="groupCount > 0"> in {{ groupCount }} group{{ groupCount !== 1 ? 's' : '' }}</span>.
-            Drag rows to reorder, or use ↑ ↓ arrows.
+          <div class="section-sub" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span>
+              {{ studyTopicCount }} study topic{{ studyTopicCount !== 1 ? 's' : '' }}
+              <span v-if="groupCount > 0"> in {{ groupCount }} group{{ groupCount !== 1 ? 's' : '' }}</span>.
+              Drag rows to reorder, or use ↑ ↓ arrows.
+            </span>
+            <button v-if="hasGroups" class="btn btn-secondary btn-sm" @click="toggleAllGroups()">
+              {{ allGroupsCollapsed ? '↔ Expand all groups' : '⊟ Collapse all groups' }}
+            </button>
           </div>
 
           <div class="topics-table-wrap">
@@ -815,7 +820,49 @@ window.StudyApp = {
 
       <!-- ── Tab: Topic Summary ── -->
       <div v-if="activeTab === 'topics'">
-        <div class="topics-table-wrap">
+
+        <!-- Toggle (only shown when there are groups) -->
+        <div v-if="hasGroups" style="margin-bottom:10px;display:flex;align-items:center;gap:10px">
+          <button class="btn btn-secondary btn-sm" @click="topicSummaryCollapsed = !topicSummaryCollapsed">
+            {{ topicSummaryCollapsed ? '↔ Show all topics' : '⊟ Collapsed view (by group)' }}
+          </button>
+          <span style="font-size:.78rem;color:var(--c-muted)">
+            {{ topicSummaryCollapsed ? 'Showing one row per group' : 'Showing one row per study topic' }}
+          </span>
+        </div>
+
+        <!-- Collapsed summary: one row per group -->
+        <div v-if="topicSummaryCollapsed && hasGroups" class="topics-table-wrap">
+          <table class="topic-summary-table">
+            <thead>
+              <tr>
+                <th style="width:200px">Group / Topic</th>
+                <th style="width:110px">Sessions</th>
+                <th style="width:110px">Est. time</th>
+                <th>Learn start → last practice</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="grp in collapsedTopicGroups" :key="grp.groupId || grp.groupTitle">
+                <td>
+                  <strong>{{ grp.groupTitle }}</strong>
+                  <span v-if="!grp.isGroup" style="font-size:.75rem;color:var(--c-muted);margin-left:4px">(standalone)</span>
+                </td>
+                <td>{{ grp.totalSessions }}</td>
+                <td>~{{ grp.totalMins }} min</td>
+                <td style="font-size:.82rem;color:var(--c-muted)">
+                  <span v-if="grp.firstLearnDate">{{ formatDate(grp.firstLearnDate) }}</span>
+                  <span v-if="grp.firstLearnDate && grp.lastPracticeDate"> → </span>
+                  <span v-if="grp.lastPracticeDate">{{ formatDate(grp.lastPracticeDate) }}</span>
+                  <span v-if="!grp.firstLearnDate && !grp.lastPracticeDate">—</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Expanded: per-topic detail (existing view) -->
+        <div v-else class="topics-table-wrap">
           <table class="topic-summary-table">
             <thead>
               <tr>
@@ -842,6 +889,7 @@ window.StudyApp = {
             </tbody>
           </table>
         </div>
+
       </div>
 
       <!-- ── Tab: Calendar View ── -->
@@ -1189,6 +1237,9 @@ window.StudyApp = {
       // Step 2 — group collapse state
       collapsedGroups: {},
 
+      // Topic summary tab collapsed view
+      topicSummaryCollapsed: false,
+
       // Step 4
       planResult:       null,
       hydratedCalendar: [],
@@ -1244,6 +1295,76 @@ window.StudyApp = {
 
     groupCount() {
       return this.topics.filter(t => t.isGroup).length;
+    },
+
+    allGroupsCollapsed() {
+      const ids = this.topics.filter(t => t.isGroup).map(t => t.id);
+      return ids.length > 0 && ids.every(id => this.collapsedGroups[id]);
+    },
+
+    // Collapsed topic summary: one entry per group (or standalone topic)
+    collapsedTopicGroups() {
+      if (!this.planResult || !this.hydratedCalendar.length) return [];
+      const summaries = this.topicSummaries; // [{title, activities}] in planTopics order
+
+      // Build lookup: planTopic id → parentId from this.topics
+      const uiTopicById = {};
+      this.topics.forEach(t => { uiTopicById[t.id] = t; });
+
+      const groups = [];
+      const groupMap = {}; // groupId → index in groups
+
+      this.planResult.topics.forEach((pt, i) => {
+        const uiTopic  = uiTopicById[pt.id];
+        const parentId = uiTopic?.parentId || null;
+        const sum      = summaries[i];
+        if (!sum) return;
+
+        if (parentId) {
+          const groupUiTopic = this.topics.find(t => t.id === parentId);
+          if (!(parentId in groupMap)) {
+            groupMap[parentId] = groups.length;
+            groups.push({
+              groupTitle: groupUiTopic?.title || 'Group',
+              groupId: parentId,
+              isGroup: true,
+              totalSessions: 0,
+              totalMins: 0,
+              firstLearnDate: null,
+              lastPracticeDate: null,
+            });
+          }
+          const grp = groups[groupMap[parentId]];
+          for (const act of sum.activities) {
+            grp.totalSessions += act.count;
+            if (act.activityType !== 'mock' && act.activityType !== 'postMock') {
+              grp.totalMins += act.count * (this.settings.sessionDuration || 20);
+            }
+            const d = act.date instanceof Date ? act.date : new Date((act.date || '') + 'T00:00:00Z');
+            if (act.activityType === 'learn') {
+              if (!grp.firstLearnDate || d < grp.firstLearnDate) grp.firstLearnDate = d;
+            }
+            if (act.activityType === 'practice') {
+              if (!grp.lastPracticeDate || d > grp.lastPracticeDate) grp.lastPracticeDate = d;
+            }
+          }
+        } else {
+          // Standalone topic
+          const totalSessions = sum.activities.reduce((s, a) => s + a.count, 0);
+          const totalMins = sum.activities
+            .filter(a => a.activityType !== 'mock' && a.activityType !== 'postMock')
+            .reduce((s, a) => s + a.count * (this.settings.sessionDuration || 20), 0);
+          let firstLearnDate = null, lastPracticeDate = null;
+          for (const act of sum.activities) {
+            const d = act.date instanceof Date ? act.date : new Date((act.date || '') + 'T00:00:00Z');
+            if (act.activityType === 'learn' && (!firstLearnDate || d < firstLearnDate)) firstLearnDate = d;
+            if (act.activityType === 'practice' && (!lastPracticeDate || d > lastPracticeDate)) lastPracticeDate = d;
+          }
+          groups.push({ groupTitle: sum.title, groupId: null, isGroup: false, totalSessions, totalMins, firstLearnDate, lastPracticeDate });
+        }
+      });
+
+      return groups;
     },
 
     screenLabel() {
@@ -1678,6 +1799,14 @@ window.StudyApp = {
       const copy = [...this.topics];
       [copy[idx], copy[swapIdx]] = [copy[swapIdx], copy[idx]];
       this.topics = copy;
+    },
+
+    toggleAllGroups() {
+      const ids = this.topics.filter(t => t.isGroup).map(t => t.id);
+      const collapse = !this.allGroupsCollapsed;
+      const next = {};
+      ids.forEach(id => { next[id] = collapse; });
+      this.collapsedGroups = next;
     },
 
     toggleChartCollapsed() {

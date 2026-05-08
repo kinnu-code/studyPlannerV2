@@ -174,7 +174,11 @@
       d.date instanceof Date ? d.date.toISOString().slice(0, 10) : d.date
     );
 
-    const STATE_PRIORITY = ['Mock','PostMock','Reviewing','Practicing','Learning','Ready to Practice','Practice Completed','Not Started'];
+    // States considered for dominance (active study/exam states only).
+    // Reviewing, Ready to Practice, and Not Started are excluded from the count
+    // so they don't crowd out the primary activity being represented.
+    const DOMINANT_STATES = new Set(['Learning','Practicing','Practice Completed','Mock','PostMock']);
+    const STATE_PRIORITY  = ['Mock','PostMock','Practicing','Learning','Practice Completed','Reviewing','Ready to Practice','Not Started'];
 
     const result = [];
     for (const topic of allTopics) {
@@ -189,13 +193,23 @@
             states.set(dk, { state: 'Not Started', progress: 0 });
             continue;
           }
-          const counts = {};
           let totalProgress = 0;
+
+          // Count only active states first
+          const activeCounts = {};
+          const allCounts    = {};
           for (const row of subRows) {
             const snap = row.states.get(dk) || { state: 'Not Started', progress: 0 };
-            counts[snap.state] = (counts[snap.state] || 0) + 1;
+            allCounts[snap.state] = (allCounts[snap.state] || 0) + 1;
+            if (DOMINANT_STATES.has(snap.state)) {
+              activeCounts[snap.state] = (activeCounts[snap.state] || 0) + 1;
+            }
             totalProgress += snap.progress;
           }
+
+          // Use active counts if any exist; otherwise fall back to all counts
+          const counts = Object.keys(activeCounts).length > 0 ? activeCounts : allCounts;
+
           // Dominant = highest count; tie-break by priority order
           let dominant = 'Not Started', maxCount = 0;
           for (const [st, cnt] of Object.entries(counts)) {
