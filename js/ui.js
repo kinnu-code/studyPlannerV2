@@ -822,14 +822,15 @@ window.StudyApp = {
       <!-- ── Tab: Topic Summary ── -->
       <div v-if="activeTab === 'topics'">
 
-        <!-- Toggle (only shown when there are groups) -->
-        <div v-if="hasGroups" style="margin-bottom:10px;display:flex;align-items:center;gap:10px">
+        <!-- Controls (only shown when there are groups) -->
+        <div v-if="hasGroups" style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <button class="btn btn-secondary btn-sm" @click="topicSummaryCollapsed = !topicSummaryCollapsed">
             {{ topicSummaryCollapsed ? '↔ Show all topics' : '⊟ Collapsed view (by group)' }}
           </button>
-          <span style="font-size:.78rem;color:var(--c-muted)">
-            {{ topicSummaryCollapsed ? 'Showing one row per group' : 'Showing one row per study topic' }}
-          </span>
+          <template v-if="!topicSummaryCollapsed">
+            <button class="btn btn-ghost btn-sm" @click="expandAllTopicGroups()">▼ Expand all</button>
+            <button class="btn btn-ghost btn-sm" @click="collapseAllTopicGroups()">▶ Collapse all</button>
+          </template>
         </div>
 
         <!-- Collapsed summary: one row per group -->
@@ -862,7 +863,7 @@ window.StudyApp = {
           </table>
         </div>
 
-        <!-- Expanded: per-topic detail (existing view) -->
+        <!-- Expanded: per-topic detail with collapsible group headers -->
         <div v-else class="topics-table-wrap">
           <table class="topic-summary-table">
             <thead>
@@ -872,21 +873,57 @@ window.StudyApp = {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="ts in topicSummaries" :key="ts.title">
-                <td><strong>{{ ts.title }}</strong></td>
-                <td>
-                  <div class="activity-list">
-                    <div class="activity-entry" v-for="(act, ai) in ts.activities" :key="ai">
-                      <span class="date">{{ formatDate(act.date) }}</span>
-                      <span class="type">
-                        <span class="activity-pill" :class="pillClass(act.activityType)">{{ activityLabel(act.activityType) }}</span>
-                        <span v-if="act.count > 1" style="margin-left:4px">× {{ act.count }}</span>
-                      </span>
-                      <span class="note">{{ act.reason }}</span>
+              <template v-for="item in groupedTopicSummaries" :key="item.type === 'group' ? item.groupId : item.summary.title">
+
+                <!-- Group header row -->
+                <tr v-if="item.type === 'group'" class="topic-group-header-row"
+                    @click="toggleTopicGroup(item.groupId)" style="cursor:pointer;user-select:none">
+                  <td colspan="2">
+                    <span class="day-expand-icon" style="margin-right:6px">{{ isTopicGroupExpanded(item.groupId) ? '▼' : '▶' }}</span>
+                    <strong>{{ item.groupTitle }}</strong>
+                    <span style="font-size:.78rem;color:var(--c-muted);margin-left:8px">
+                      {{ item.subtopics.length }} topic{{ item.subtopics.length !== 1 ? 's' : '' }}
+                    </span>
+                  </td>
+                </tr>
+
+                <!-- Sub-topic rows (visible when group is expanded) -->
+                <template v-if="item.type === 'group' && isTopicGroupExpanded(item.groupId)">
+                  <tr v-for="ts in item.subtopics" :key="ts.title" class="topic-subtopic-row">
+                    <td style="padding-left:20px">{{ ts.title }}</td>
+                    <td>
+                      <div class="activity-list">
+                        <div class="activity-entry" v-for="(act, ai) in ts.activities" :key="ai">
+                          <span class="date">{{ formatDate(act.date) }}</span>
+                          <span class="type">
+                            <span class="activity-pill" :class="pillClass(act.activityType)">{{ activityLabel(act.activityType) }}</span>
+                            <span v-if="act.count > 1" style="margin-left:4px">× {{ act.count }}</span>
+                          </span>
+                          <span class="note">{{ act.reason }}</span>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </template>
+
+                <!-- Standalone topic row -->
+                <tr v-if="item.type === 'standalone'">
+                  <td><strong>{{ item.summary.title }}</strong></td>
+                  <td>
+                    <div class="activity-list">
+                      <div class="activity-entry" v-for="(act, ai) in item.summary.activities" :key="ai">
+                        <span class="date">{{ formatDate(act.date) }}</span>
+                        <span class="type">
+                          <span class="activity-pill" :class="pillClass(act.activityType)">{{ activityLabel(act.activityType) }}</span>
+                          <span v-if="act.count > 1" style="margin-left:4px">× {{ act.count }}</span>
+                        </span>
+                        <span class="note">{{ act.reason }}</span>
+                      </div>
                     </div>
-                  </div>
-                </td>
-              </tr>
+                  </td>
+                </tr>
+
+              </template>
             </tbody>
           </table>
         </div>
@@ -1254,6 +1291,9 @@ window.StudyApp = {
       // Day-by-day collapse state (default: all collapsed)
       expandedDays: {},
 
+      // Topic summary group collapse state (default: all collapsed)
+      expandedTopicGroups: {},
+
       // Calendar view
       currentCalMonth: null,
       calendarPopover: null,
@@ -1365,6 +1405,36 @@ window.StudyApp = {
       });
 
       return groups;
+    },
+
+    groupedTopicSummaries() {
+      if (!this.planResult || !this.hydratedCalendar.length) return [];
+      const summaries = this.topicSummaries;
+      const uiTopicById = {};
+      this.topics.forEach(t => { uiTopicById[t.id] = t; });
+
+      const result = [];
+      const groupMap = {}; // groupId → index in result
+
+      this.planResult.topics.forEach((pt, i) => {
+        const uiTopic  = uiTopicById[pt.id];
+        const parentId = uiTopic?.parentId || null;
+        const sum      = summaries[i];
+        if (!sum) return;
+
+        if (parentId) {
+          const groupUiTopic = this.topics.find(t => t.id === parentId);
+          if (!(parentId in groupMap)) {
+            groupMap[parentId] = result.length;
+            result.push({ type: 'group', groupId: parentId, groupTitle: groupUiTopic?.title || 'Group', subtopics: [] });
+          }
+          result[groupMap[parentId]].subtopics.push(sum);
+        } else {
+          result.push({ type: 'standalone', summary: sum });
+        }
+      });
+
+      return result;
     },
 
     screenLabel() {
@@ -1872,6 +1942,7 @@ window.StudyApp = {
       this.overflowExpanded     = result.overflow.hasOverflow;
       this.overflowEditSchedule = result.overflow.hasOverflow;
       this.expandedDays         = {};
+      this.expandedTopicGroups  = {};
       this.initCalMonth();
       StudyStorage.saveCurrentPlan(this.buildPlanData());
     },
@@ -2029,6 +2100,26 @@ window.StudyApp = {
 
     isDayExpanded(dateKey) {
       return !!this.expandedDays[dateKey];
+    },
+
+    // ── Topic summary group collapse ────────────────────────────────────────
+
+    toggleTopicGroup(groupId) {
+      this.expandedTopicGroups = { ...this.expandedTopicGroups, [groupId]: !this.expandedTopicGroups[groupId] };
+    },
+
+    isTopicGroupExpanded(groupId) {
+      return !!this.expandedTopicGroups[groupId];
+    },
+
+    expandAllTopicGroups() {
+      const expanded = {};
+      this.groupedTopicSummaries.filter(g => g.type === 'group').forEach(g => { expanded[g.groupId] = true; });
+      this.expandedTopicGroups = expanded;
+    },
+
+    collapseAllTopicGroups() {
+      this.expandedTopicGroups = {};
     },
 
     dayEstimatedTime(sessions) {
