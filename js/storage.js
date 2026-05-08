@@ -18,7 +18,7 @@
 
   const DEFAULT_SETTINGS = {
     apiKey:                  '',
-    model:                   'gpt-4o',
+    model:                   'gpt-5.4',
     sessionDuration:         20,     // minutes (display only)
     learningMode:            'interleaved', // 'interleaved' | 'sequential'
     maxNewTopicsPerDay:      4,

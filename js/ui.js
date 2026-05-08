@@ -12,6 +12,7 @@ const DOW_LABELS = [
 ];
 
 const RECENT_MODELS = [
+  'gpt-5.4',
   'gpt-4o',
   'gpt-4o-mini',
   'gpt-4-turbo',
@@ -489,8 +490,17 @@ window.StudyApp = {
             {{ overflowSummaryText }}
           </div>
 
+          <!-- Auto-adjust button — shown only when there is overflow -->
+          <div v-if="planResult.overflow.hasOverflow"
+               style="margin-bottom:20px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px">
+            <p style="font-size:.88rem;margin-bottom:10px;font-weight:500">
+              Let the planner increase your sessions per day automatically to make everything fit:
+            </p>
+            <button class="btn btn-primary btn-sm" @click="doAdjustSchedule()">⚡ Adjust schedule for me</button>
+          </div>
+
           <p style="font-weight:600;margin-bottom:12px">
-            Adjust any of the options below then press Regenerate:
+            Or adjust manually:
           </p>
 
           <!-- Option 1: Update study schedule -->
@@ -802,7 +812,8 @@ window.StudyApp = {
 
           <div class="action-bar">
             <button class="btn btn-secondary" @click="navigate('home')">Back</button>
-            <button class="btn btn-primary" @click="doGeneratePlan()">Regenerate Plan →</button>
+            <button class="btn btn-secondary" @click="doGeneratePlan()">Regenerate Plan →</button>
+            <button class="btn btn-primary" @click="doAdjustSchedule()">⚡ Adjust schedule for me</button>
           </div>
         </div>
       </div>
@@ -1261,72 +1272,105 @@ window.StudyApp = {
 
     // ── Step 3 → Step 4 ────────────────────────────────────────────────────
 
+    // Build the generatePlan config from current Vue state.
+    _planConfig() {
+      const planTopics  = this.topics.map(t => ({
+        id: t.id, name: t.title, difficulty: t.difficulty, startingState: t.startingState,
+      }));
+      const srIntervals = this.settingsSrText
+        .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+      return {
+        topics:          planTopics,
+        startDate:       new Date(this.startDate + 'T00:00:00Z'),
+        examDate:        new Date(this.examDate   + 'T00:00:00Z'),
+        firstWeek:       this.firstWeek,
+        lastWeek:        this.lastWeek,
+        rampMode:        this.rampMode,
+        numMocks:        this.numMocks,
+        srIntervals:     srIntervals.length ? srIntervals : [1,6,16,45,131],
+        postMockSameDay: this.settings.postMockSameDay !== false,
+        settings: {
+          lnTable:                this.settings.lnTable,
+          pnTable:                this.settings.pnTable,
+          learningMode:           this.settings.learningMode || 'interleaved',
+          maxNewTopicsPerDay:     this.settings.maxNewTopicsPerDay,
+          maxDaysBetweenPractice: this.settings.maxDaysBetweenPractice || 7,
+        },
+      };
+    },
+
+    // Apply a finished generatePlan result to Vue state.
+    _applyPlanResult(result) {
+      this.planResult       = result;
+      this.hydratedCalendar = hydrateCalendar(result.calendar, result.topics, result.mocks);
+      this.chartTopicsData  = result.topics.map(t => ({
+        id: t.id, title: t.name, totalPN: t.totalPN, startingState: t.startingState,
+      }));
+      // Auto-expand the overflow panel and the schedule sub-section when the plan doesn't fit.
+      this.overflowExpanded     = result.overflow.hasOverflow;
+      this.overflowEditSchedule = result.overflow.hasOverflow;
+      this.expandedDays         = {};
+      this.initCalMonth();
+      StudyStorage.saveCurrentPlan(this.buildPlanData());
+    },
+
     doGeneratePlan() {
       this.loading    = true;
       this.loadingMsg = 'Building your study plan…';
       this.error      = null;
 
-      // Yield to the browser to paint the loading state
       setTimeout(() => {
         try {
-          const planTopics = this.topics.map(t => ({
-            id:            t.id,
-            name:          t.title,
-            difficulty:    t.difficulty,
-            startingState: t.startingState,
-          }));
-
-          const srIntervals = this.settingsSrText
-            .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
-
-          const config = {
-            topics:         planTopics,
-            startDate:      new Date(this.startDate + 'T00:00:00Z'),
-            examDate:       new Date(this.examDate   + 'T00:00:00Z'),
-            firstWeek:      this.firstWeek,
-            lastWeek:       this.lastWeek,
-            rampMode:       this.rampMode,
-            numMocks:       this.numMocks,
-            srIntervals:    srIntervals.length ? srIntervals : [1,6,16,45,131],
-            postMockSameDay: this.settings.postMockSameDay !== false,
-            settings: {
-              lnTable:                this.settings.lnTable,
-              pnTable:                this.settings.pnTable,
-              learningMode:           this.settings.learningMode || 'interleaved',
-              maxNewTopicsPerDay:     this.settings.maxNewTopicsPerDay,
-              maxDaysBetweenPractice: this.settings.maxDaysBetweenPractice || 7,
-            },
-          };
-
-          this.planResult = StudyPlanner.generatePlan(config);
-
-          this.hydratedCalendar = hydrateCalendar(
-            this.planResult.calendar,
-            this.planResult.topics,
-            this.planResult.mocks,
-          );
-
-          this.chartTopicsData = this.planResult.topics.map(t => ({
-            id:            t.id,
-            title:         t.name,
-            totalPN:       t.totalPN,
-            startingState: t.startingState,
-          }));
-
-          this.overflowExpanded = this.planResult.overflow.hasOverflow;
-          this.activeTab        = 'trajectory';
-          this.expandedDays     = {};
-          this.initCalMonth();
-
-          // Save to localStorage
-          StudyStorage.saveCurrentPlan(this.buildPlanData());
-
+          this._applyPlanResult(StudyPlanner.generatePlan(this._planConfig()));
+          this.activeTab = 'trajectory';
           this.navigate('step4');
         } catch (e) {
           this.error = e.message;
         } finally {
           this.loading = false;
-          // Render chart after Vue repaints with loading=false (canvas back in DOM).
+          this.$nextTick(() => this.renderChart());
+        }
+      }, 50);
+    },
+
+    // Scale firstWeek/lastWeek up so the plan fits, then regenerate.
+    // Runs a first pass to measure overflow, adjusts, then runs a second pass.
+    doAdjustSchedule() {
+      this.loading    = true;
+      this.loadingMsg = 'Adjusting schedule…';
+      this.error      = null;
+
+      setTimeout(() => {
+        try {
+          // First pass: measure the deficit.
+          let result = StudyPlanner.generatePlan(this._planConfig());
+
+          if (result.overflow.hasOverflow) {
+            const capacity = result.calendar.reduce((s, d) => s + d.totalSessions, 0);
+            const factor   = ((capacity + result.overflow.totalMissingSessions) / capacity) * 1.10;
+
+            for (const key of Object.keys(this.firstWeek)) {
+              if (this.firstWeek[key] > 0)
+                this.firstWeek[key] = Math.min(12, Math.max(1, Math.round(this.firstWeek[key] * factor)));
+              if (this.lastWeek[key] > 0)
+                this.lastWeek[key]  = Math.min(36, Math.max(1, Math.round(this.lastWeek[key]  * factor)));
+            }
+
+            // Second pass with the adjusted schedule.
+            result = StudyPlanner.generatePlan(this._planConfig());
+
+            if (result.overflow.hasOverflow) {
+              this.error = 'The schedule is at maximum capacity but the plan still overflows. Try removing some topics.';
+            }
+          }
+
+          this._applyPlanResult(result);
+          this.activeTab = 'trajectory';
+          this.navigate('step4');
+        } catch (e) {
+          this.error = e.message;
+        } finally {
+          this.loading = false;
           this.$nextTick(() => this.renderChart());
         }
       }, 50);
