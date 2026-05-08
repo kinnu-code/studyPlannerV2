@@ -154,24 +154,65 @@
       ],
     });
 
-    const topics = parseJSON(raw);
+    const parsed = parseJSON(raw);
 
-    if (!Array.isArray(topics)) {
+    if (!Array.isArray(parsed)) {
       throw new Error('AI response was not a JSON array of topics');
     }
 
-    // Normalise and validate each entry
-    return topics.map((t, i) => {
+    // Modes 1 & 2: AI returns a hierarchical structure → flatten to { title, isGroup, parentTitle, difficulty, startingState }
+    if (mode === 'examName' || mode === 'broadList') {
+      return flattenHierarchical(parsed);
+    }
+
+    // Mode 3: AI returns a flat list (leaf topics only); user hierarchy parsed separately in ui.js
+    return parsed.map((t, i) => {
       if (!t.title || typeof t.title !== 'string') {
         throw new Error(`Topic ${i + 1} is missing a "title" field`);
       }
-      const difficulty    = normaliseEnum(t.difficulty,    ['easy','medium','hard'],             'medium');
+      const difficulty    = normaliseEnum(t.difficulty,    ['easy','medium','hard'],                              'medium');
       const startingState = normaliseEnum(t.startingState, ['Not Started','Learned','Practicing','Reviewing'], 'Not Started');
       return { title: t.title.trim(), difficulty, startingState };
     });
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
+
+  /**
+   * Flatten a hierarchical AI response (modes 1 & 2) into a flat array.
+   * Each item gets: { title, isGroup, parentTitle, difficulty, startingState }
+   * Groups have isGroup=true, difficulty=null, startingState=null.
+   */
+  function flattenHierarchical(hierarchical) {
+    const result = [];
+    for (const item of hierarchical) {
+      if (!item || typeof item !== 'object') continue;
+      if (Array.isArray(item.subTopics) && item.subTopics.length > 0) {
+        const parentTitle = (item.title || '').trim();
+        result.push({ title: parentTitle, isGroup: true, parentTitle: null, difficulty: null, startingState: null });
+        for (const sub of item.subTopics) {
+          if (!sub || !sub.title || typeof sub.title !== 'string') continue;
+          result.push({
+            title:         sub.title.trim(),
+            isGroup:       false,
+            parentTitle,
+            difficulty:    normaliseEnum(sub.difficulty,    ['easy','medium','hard'],                              'medium'),
+            startingState: normaliseEnum(sub.startingState, ['Not Started','Learned','Practicing','Reviewing'], 'Not Started'),
+          });
+        }
+      } else {
+        if (!item.title || typeof item.title !== 'string') continue;
+        result.push({
+          title:         item.title.trim(),
+          isGroup:       false,
+          parentTitle:   null,
+          difficulty:    normaliseEnum(item.difficulty,    ['easy','medium','hard'],                              'medium'),
+          startingState: normaliseEnum(item.startingState, ['Not Started','Learned','Practicing','Reviewing'], 'Not Started'),
+        });
+      }
+    }
+    return result;
+  }
 
   function normaliseEnum(value, allowed, fallback) {
     if (!value) return fallback;
@@ -192,5 +233,6 @@
   return {
     generateTopics,
     parseFreeText,
+    flattenHierarchical,
   };
 }));

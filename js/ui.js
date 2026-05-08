@@ -139,6 +139,80 @@ function buildTopicSummaries(hydratedCalendar, planTopics) {
   return planTopics.map(t => sums[t.id]).filter(Boolean);
 }
 
+// ─── Parse hierarchical topic input (mode 3) ─────────────────────────────────
+// Accepts indented text or Markdown # / ## headings.
+// Returns a flat array with { title, isGroup, _parentTempId, _tempId, difficulty, startingState }.
+
+function parseHierarchyInput(text) {
+  const rawLines = text.split('\n');
+
+  // Annotate each non-empty line
+  const lines = [];
+  for (const raw of rawLines) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const isMarkdown1 = /^#\s/.test(trimmed);
+    const isMarkdown2 = /^##\s/.test(trimmed);
+    const isIndented  = raw.startsWith('  ') || raw.startsWith('\t');
+    lines.push({ raw, trimmed, isMarkdown1, isMarkdown2, isIndented });
+  }
+
+  // Determine type for each line (two-pass)
+  // Pass 1: classify
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (l.isMarkdown1) {
+      l.type = 'group';
+      l.content = trimmed.replace(/^#+\s*/, '');  // will re-do below
+      l.content = l.trimmed.replace(/^#+\s*/, '');
+    } else if (l.isMarkdown2) {
+      l.type = 'subtopic';
+      l.content = l.trimmed.replace(/^#+\s*/, '');
+    } else if (l.isIndented) {
+      l.type = 'subtopic';
+      l.content = l.trimmed;
+    } else {
+      // Non-indented, non-markdown: group if the NEXT non-empty line is indented, else standalone
+      const next = lines[i + 1];
+      l.type    = (next && (next.isIndented || next.isMarkdown2)) ? 'group' : 'standalone';
+      l.content = l.trimmed;
+    }
+  }
+
+  // Pass 2: build flat result with parent references
+  let idCounter  = 1;
+  let currentGrp = null;
+  const result   = [];
+
+  for (const l of lines) {
+    if (l.type === 'group') {
+      currentGrp = { _tempId: idCounter++, title: l.content, isGroup: true, _parentTempId: null };
+      result.push(currentGrp);
+    } else if (l.type === 'subtopic') {
+      result.push({
+        _tempId:       idCounter++,
+        title:         l.content,
+        isGroup:       false,
+        _parentTempId: currentGrp ? currentGrp._tempId : null,
+        difficulty:    'medium',
+        startingState: 'Not Started',
+      });
+    } else {
+      currentGrp = null;  // reset group context on standalone line
+      result.push({
+        _tempId:       idCounter++,
+        title:         l.content,
+        isGroup:       false,
+        _parentTempId: null,
+        difficulty:    'medium',
+        startingState: 'Not Started',
+      });
+    }
+  }
+
+  return result;
+}
+
 // ─── Vue app definition ───────────────────────────────────────────────────────
 
 window.StudyApp = {
@@ -212,38 +286,48 @@ window.StudyApp = {
           <div class="mode-cards">
             <div class="mode-card" :class="{ selected: topicInputMode === 'examName' }"
                  @click="topicInputMode = 'examName'">
-              <h4>Exam name only</h4>
-              <p>Enter the exam name and the AI generates a complete topic list for you.</p>
+              <h4>AI generates everything</h4>
+              <p>Enter the exam name. AI creates a structured hierarchy of subject areas and granular study units.</p>
             </div>
             <div class="mode-card" :class="{ selected: topicInputMode === 'broadList' }"
                  @click="topicInputMode = 'broadList'">
-              <h4>High-level topics</h4>
-              <p>Enter broad topic headings and the AI breaks each into granular sub-topics.</p>
+              <h4>You choose the areas</h4>
+              <p>Enter your main subject areas (one per line). AI generates the granular study units under each area for you.</p>
             </div>
             <div class="mode-card" :class="{ selected: topicInputMode === 'granularList' }"
                  @click="topicInputMode = 'granularList'">
               <h4>Full topic list</h4>
-              <p>Paste your complete list. The AI estimates difficulty only.</p>
+              <p>Paste your complete list. Use indentation or # headings to create groups. AI estimates difficulty only.</p>
             </div>
           </div>
 
           <!-- Exam name field (mode 1 & 2) -->
           <div class="form-group" v-if="topicInputMode !== 'granularList'">
             <label>Exam name</label>
-            <input type="text" v-model="examName" placeholder="e.g. SQE FLK1, CFA Level 1" />
+            <input type="text" v-model="examName" list="exam-suggestions"
+                   placeholder="e.g. CFA Level 1, SQE FLK1…"
+                   @input="onExamNameInput" />
+            <datalist id="exam-suggestions">
+              <option v-for="exam in predefinedExams" :key="exam.id" :value="exam.name">{{ exam.description }}</option>
+            </datalist>
+            <span class="form-hint" v-if="selectedPredefinedExam" style="color:var(--c-success)">
+              ✓ Predefined exam — topics load instantly, no AI needed for the topic list.
+            </span>
           </div>
 
           <!-- Broad topics (mode 2) -->
           <div class="form-group" v-if="topicInputMode === 'broadList'">
-            <label>Broad topics (one per line)</label>
+            <label>Your subject areas (one per line)</label>
             <textarea v-model="broadTopicsText" rows="5" placeholder="Contract Law&#10;Tort&#10;Land Law"></textarea>
+            <span class="form-hint">AI will generate granular study units under each area. You'll be able to review and edit everything on the next screen.</span>
           </div>
 
           <!-- Granular list (mode 3) -->
           <div class="form-group" v-if="topicInputMode === 'granularList'">
-            <label>Topic list (one per line)</label>
-            <textarea v-model="granularTopicsText" rows="8" placeholder="Contract Formation&#10;Consideration&#10;Terms of a Contract&#10;…"></textarea>
-            <span class="form-hint">You can also paste from a spreadsheet — one topic per line.</span>
+            <label>Topic list</label>
+            <textarea v-model="granularTopicsText" rows="10"
+              placeholder="# Contract Law&#10;  Contract Formation&#10;  Consideration&#10;  Terms of a Contract&#10;&#10;# Tort&#10;  Negligence&#10;  Psychiatric Injury&#10;&#10;Standalone Topic"></textarea>
+            <span class="form-hint">Use <strong>#</strong> headings or indentation (2 spaces / tab) to create subject groups. Topics without indentation and no indented children are treated as standalone. AI estimates difficulty only.</span>
           </div>
 
           <!-- Free text AI notes -->
@@ -253,8 +337,9 @@ window.StudyApp = {
               placeholder="e.g. I struggle with Land Law. Limit to 30 topics. I have already studied everything, focus on practice."></textarea>
           </div>
 
-          <div class="alert alert-warn" v-if="!settings.apiKey">
+          <div class="alert alert-warn" v-if="!settings.apiKey && !(selectedPredefinedExam && !freeText.trim())">
             No API key configured. <a href="#" @click.prevent="navigate('settings')">Set it in Settings</a> before generating topics.
+            <span v-if="predefinedExams.length"> Predefined exams (like CFA Level 1) don't need an API key unless you add free-text notes.</span>
           </div>
 
           <div class="action-bar">
@@ -283,7 +368,11 @@ window.StudyApp = {
       <div class="card">
         <div class="card-body">
           <div class="section-title">Review & Confirm Topics</div>
-          <div class="section-sub">{{ topics.length }} topics. Drag rows to reorder, or use ↑ ↓ arrows.</div>
+          <div class="section-sub">
+            {{ studyTopicCount }} study topic{{ studyTopicCount !== 1 ? 's' : '' }}
+            <span v-if="groupCount > 0"> in {{ groupCount }} group{{ groupCount !== 1 ? 's' : '' }}</span>.
+            Drag rows to reorder, or use ↑ ↓ arrows.
+          </div>
 
           <div class="topics-table-wrap">
             <table class="topics-table">
@@ -297,44 +386,121 @@ window.StudyApp = {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(topic, idx) in topics" :key="topic.id"
-                    draggable="true"
-                    :class="{ 'drag-over': dragOverIdx === idx, 'dragging': dragSrcIdx === idx }"
-                    @dragstart="onDragStart($event, idx)"
-                    @dragover.prevent="onDragOver($event, idx)"
-                    @drop.prevent="onDrop($event, idx)"
-                    @dragend="onDragEnd">
-                  <td class="col-num">{{ idx + 1 }}</td>
-                  <td class="col-title">
-                    <input type="text" v-model="topic.title" />
-                  </td>
-                  <td class="col-diff">
-                    <select class="select-sm" v-model="topic.difficulty">
-                      <option value="easy">Easy</option>
-                      <option value="medium">Medium</option>
-                      <option value="hard">Hard</option>
-                    </select>
-                  </td>
-                  <td class="col-state">
-                    <select class="select-sm" v-model="topic.startingState">
-                      <option value="Not Started">Not Started</option>
-                      <option value="Learned">Learned</option>
-                      <option value="Practicing">Practicing</option>
-                      <option value="Reviewing">Reviewing</option>
-                    </select>
-                  </td>
-                  <td class="col-actions">
-                    <button class="btn btn-ghost btn-icon" title="Move up"    @click="moveTopic(idx, -1)" :disabled="idx === 0">↑</button>
-                    <button class="btn btn-ghost btn-icon" title="Move down"  @click="moveTopic(idx,  1)" :disabled="idx === topics.length - 1">↓</button>
-                    <button class="btn btn-ghost btn-icon" title="Delete"     @click="deleteTopic(idx)">🗑</button>
-                  </td>
-                </tr>
+                <template v-for="(topic, idx) in topics" :key="topic.id">
+
+                  <!-- Group header row -->
+                  <tr v-if="topic.isGroup" class="topic-group-row">
+                    <td class="col-num" style="cursor:pointer;text-align:center;font-size:.8rem"
+                        @click="toggleGroupCollapse(topic.id)">
+                      {{ isGroupCollapsed(topic.id) ? '▶' : '▼' }}
+                    </td>
+                    <td class="col-title">
+                      <input type="text" v-model="topic.title" style="font-weight:600" />
+                      <span style="font-size:.72rem;color:var(--c-muted);margin-left:6px">
+                        {{ subtopicCount(topic.id) }} sub-topic{{ subtopicCount(topic.id) !== 1 ? 's' : '' }}
+                      </span>
+                    </td>
+                    <td class="col-diff">
+                      <select class="select-sm" @change="groupBulkDifficulty(topic.id, $event.target.value)">
+                        <option value="">Set all…</option>
+                        <option value="easy">All Easy</option>
+                        <option value="medium">All Medium</option>
+                        <option value="hard">All Hard</option>
+                      </select>
+                    </td>
+                    <td class="col-state">
+                      <select class="select-sm" @change="groupBulkState(topic.id, $event.target.value)">
+                        <option value="">Set all…</option>
+                        <option value="Not Started">All Not Started</option>
+                        <option value="Learned">All Learned</option>
+                        <option value="Practicing">All Practicing</option>
+                        <option value="Reviewing">All Reviewing</option>
+                      </select>
+                    </td>
+                    <td class="col-actions">
+                      <button class="btn btn-ghost btn-icon" title="Add sub-topic" @click="addSubTopic(topic.id)">+</button>
+                      <button class="btn btn-ghost btn-icon" title="Delete group and all its sub-topics" @click="deleteGroup(topic.id)">🗑</button>
+                    </td>
+                  </tr>
+
+                  <!-- Sub-topic row (hidden when group is collapsed) -->
+                  <tr v-else-if="topic.parentId && !isGroupCollapsed(topic.parentId)"
+                      class="topic-subtopic-row"
+                      draggable="true"
+                      :class="{ 'drag-over': dragOverIdx === idx, 'dragging': dragSrcIdx === idx }"
+                      @dragstart="onDragStart($event, idx)"
+                      @dragover.prevent="onDragOver($event, idx)"
+                      @drop.prevent="onDrop($event, idx)"
+                      @dragend="onDragEnd">
+                    <td class="col-num" style="color:var(--c-muted);padding-left:20px">↳</td>
+                    <td class="col-title">
+                      <input type="text" v-model="topic.title" style="padding-left:4px" />
+                    </td>
+                    <td class="col-diff">
+                      <select class="select-sm" v-model="topic.difficulty">
+                        <option value="easy">Easy</option>
+                        <option value="medium">Medium</option>
+                        <option value="hard">Hard</option>
+                      </select>
+                    </td>
+                    <td class="col-state">
+                      <select class="select-sm" v-model="topic.startingState">
+                        <option value="Not Started">Not Started</option>
+                        <option value="Learned">Learned</option>
+                        <option value="Practicing">Practicing</option>
+                        <option value="Reviewing">Reviewing</option>
+                      </select>
+                    </td>
+                    <td class="col-actions">
+                      <button class="btn btn-ghost btn-icon" title="Move up"   @click="moveSubTopic(topic.id, -1)">↑</button>
+                      <button class="btn btn-ghost btn-icon" title="Move down" @click="moveSubTopic(topic.id,  1)">↓</button>
+                      <button class="btn btn-ghost btn-icon" title="Delete"    @click="deleteTopic(idx)">🗑</button>
+                    </td>
+                  </tr>
+
+                  <!-- Standalone topic row -->
+                  <tr v-else-if="!topic.isGroup && !topic.parentId"
+                      class="topic-row"
+                      draggable="true"
+                      :class="{ 'drag-over': dragOverIdx === idx, 'dragging': dragSrcIdx === idx }"
+                      @dragstart="onDragStart($event, idx)"
+                      @dragover.prevent="onDragOver($event, idx)"
+                      @drop.prevent="onDrop($event, idx)"
+                      @dragend="onDragEnd">
+                    <td class="col-num">{{ idx + 1 }}</td>
+                    <td class="col-title">
+                      <input type="text" v-model="topic.title" />
+                    </td>
+                    <td class="col-diff">
+                      <select class="select-sm" v-model="topic.difficulty">
+                        <option value="easy">Easy</option>
+                        <option value="medium">Medium</option>
+                        <option value="hard">Hard</option>
+                      </select>
+                    </td>
+                    <td class="col-state">
+                      <select class="select-sm" v-model="topic.startingState">
+                        <option value="Not Started">Not Started</option>
+                        <option value="Learned">Learned</option>
+                        <option value="Practicing">Practicing</option>
+                        <option value="Reviewing">Reviewing</option>
+                      </select>
+                    </td>
+                    <td class="col-actions">
+                      <button class="btn btn-ghost btn-icon" title="Move up"    @click="moveTopic(idx, -1)" :disabled="idx === 0">↑</button>
+                      <button class="btn btn-ghost btn-icon" title="Move down"  @click="moveTopic(idx,  1)" :disabled="idx === topics.length - 1">↓</button>
+                      <button class="btn btn-ghost btn-icon" title="Delete"     @click="deleteTopic(idx)">🗑</button>
+                    </td>
+                  </tr>
+
+                </template>
               </tbody>
             </table>
           </div>
 
-          <div style="margin-top:10px">
-            <button class="btn btn-secondary btn-sm" @click="addTopic()">+ Add Topic</button>
+          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-secondary btn-sm" @click="addTopic()">+ Add Standalone Topic</button>
+            <button class="btn btn-secondary btn-sm" @click="addGroup()">+ Add Group</button>
           </div>
 
           <!-- State legend -->
@@ -583,6 +749,16 @@ window.StudyApp = {
 
       <!-- ── Tab: Visual Trajectory ── -->
       <div v-if="activeTab === 'trajectory'">
+        <!-- Collapsed/expanded toggle (only shown when there are groups) -->
+        <div v-if="hasGroups" style="margin-bottom:10px;display:flex;align-items:center;gap:10px">
+          <button class="btn btn-secondary btn-sm" @click="toggleChartCollapsed()">
+            {{ chartCollapsed ? '↔ Show all topics' : '⊟ Collapsed view (by group)' }}
+          </button>
+          <span style="font-size:.78rem;color:var(--c-muted)">
+            {{ chartCollapsed ? 'Showing one row per group' : 'Showing one row per study topic' }}
+          </span>
+        </div>
+
         <!-- Legend above -->
         <div class="chart-legend">
           <span v-for="item in chartLegendItems" :key="item.label" class="legend-item">
@@ -787,25 +963,56 @@ window.StudyApp = {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(topic, idx) in topics" :key="topic.id">
-                  <td class="col-num">{{ idx + 1 }}</td>
-                  <td class="col-title">{{ topic.title }}</td>
-                  <td class="col-diff">
-                    <select class="select-sm" v-model="topic.difficulty">
-                      <option value="easy">Easy</option>
-                      <option value="medium">Medium</option>
-                      <option value="hard">Hard</option>
-                    </select>
-                  </td>
-                  <td class="col-state">
-                    <select class="select-sm" v-model="topic.startingState">
-                      <option value="Not Started">Not Started</option>
-                      <option value="Learned">Learned</option>
-                      <option value="Practicing">Practicing</option>
-                      <option value="Reviewing">Reviewing</option>
-                    </select>
-                  </td>
-                </tr>
+                <template v-for="(topic, idx) in topics" :key="topic.id">
+                  <tr v-if="topic.isGroup" class="topic-group-row">
+                    <td class="col-num" style="text-align:center;font-size:.8rem;cursor:pointer"
+                        @click="toggleGroupCollapse(topic.id)">
+                      {{ isGroupCollapsed(topic.id) ? '▶' : '▼' }}
+                    </td>
+                    <td class="col-title" colspan="3" style="font-weight:600">
+                      {{ topic.title }}
+                      <span style="font-size:.72rem;color:var(--c-muted);margin-left:6px">{{ subtopicCount(topic.id) }} sub-topics</span>
+                    </td>
+                  </tr>
+                  <tr v-else-if="topic.parentId && !isGroupCollapsed(topic.parentId)" class="topic-subtopic-row">
+                    <td class="col-num" style="color:var(--c-muted);padding-left:20px">↳</td>
+                    <td class="col-title">{{ topic.title }}</td>
+                    <td class="col-diff">
+                      <select class="select-sm" v-model="topic.difficulty">
+                        <option value="easy">Easy</option>
+                        <option value="medium">Medium</option>
+                        <option value="hard">Hard</option>
+                      </select>
+                    </td>
+                    <td class="col-state">
+                      <select class="select-sm" v-model="topic.startingState">
+                        <option value="Not Started">Not Started</option>
+                        <option value="Learned">Learned</option>
+                        <option value="Practicing">Practicing</option>
+                        <option value="Reviewing">Reviewing</option>
+                      </select>
+                    </td>
+                  </tr>
+                  <tr v-else-if="!topic.isGroup && !topic.parentId">
+                    <td class="col-num">{{ idx + 1 }}</td>
+                    <td class="col-title">{{ topic.title }}</td>
+                    <td class="col-diff">
+                      <select class="select-sm" v-model="topic.difficulty">
+                        <option value="easy">Easy</option>
+                        <option value="medium">Medium</option>
+                        <option value="hard">Hard</option>
+                      </select>
+                    </td>
+                    <td class="col-state">
+                      <select class="select-sm" v-model="topic.startingState">
+                        <option value="Not Started">Not Started</option>
+                        <option value="Learned">Learned</option>
+                        <option value="Practicing">Practicing</option>
+                        <option value="Reviewing">Reviewing</option>
+                      </select>
+                    </td>
+                  </tr>
+                </template>
               </tbody>
             </table>
           </div>
@@ -962,6 +1169,8 @@ window.StudyApp = {
       broadTopicsText: '',
       granularTopicsText: '',
       freeText: '',
+      predefinedExams:        [],   // loaded from data/exams/index.json
+      selectedPredefinedExam: null, // matched predefined exam object
 
       // Step 2
       topics: [],
@@ -977,6 +1186,9 @@ window.StudyApp = {
       rampMode:  'linear',
       numMocks:  3,
 
+      // Step 2 — group collapse state
+      collapsedGroups: {},
+
       // Step 4
       planResult:       null,
       hydratedCalendar: [],
@@ -986,6 +1198,7 @@ window.StudyApp = {
       overflowExpanded: false,
       overflowEditSchedule: false,
       overflowEditDate: false,
+      chartCollapsed:   false,
 
       // Day-by-day collapse state (default: all collapsed)
       expandedDays: {},
@@ -1021,6 +1234,18 @@ window.StudyApp = {
     dowLabels() { return DOW_LABELS; },
     recentModels() { return RECENT_MODELS; },
 
+    hasGroups() {
+      return this.topics.some(t => t.isGroup);
+    },
+
+    studyTopicCount() {
+      return this.topics.filter(t => !t.isGroup).length;
+    },
+
+    groupCount() {
+      return this.topics.filter(t => t.isGroup).length;
+    },
+
     screenLabel() {
       return {
         step1:    'New Plan — Step 1: Topic Input',
@@ -1033,11 +1258,13 @@ window.StudyApp = {
     },
 
     canGenerateTopics() {
-      if (!this.settings.apiKey) return false;
-      if (this.topicInputMode === 'examName'     && !this.examName.trim())         return false;
-      if (this.topicInputMode === 'broadList'    && !this.broadTopicsText.trim())  return false;
+      if (this.topicInputMode === 'examName' && !this.examName.trim()) return false;
+      if (this.topicInputMode === 'broadList' && !this.broadTopicsText.trim()) return false;
       if (this.topicInputMode === 'granularList' && !this.granularTopicsText.trim()) return false;
-      return true;
+      // Predefined exam with no free text: no API key needed
+      if (this.selectedPredefinedExam && this.topicInputMode === 'examName' && !this.freeText.trim()) return true;
+      // All other cases require an API key
+      return !!this.settings.apiKey;
     },
 
     overflowSummaryText() {
@@ -1184,38 +1411,141 @@ window.StudyApp = {
 
     // ── Step 1 → Step 2 ────────────────────────────────────────────────────
 
+    onExamNameInput() {
+      const name = this.examName.trim().toLowerCase();
+      this.selectedPredefinedExam = this.predefinedExams.find(
+        e => e.name.toLowerCase() === name
+      ) || null;
+    },
+
+    // Apply structured free-text overrides to this.topics (leaf topics only).
+    _applyFreeTextInfo(info) {
+      if (!info || !Object.keys(info).length) return;
+      this.topics = this.topics.map(t => {
+        if (t.isGroup) return t;
+        let { difficulty, startingState } = t;
+
+        // Global starting state
+        if (info.globalStartingState) startingState = info.globalStartingState;
+
+        // Weak areas → difficulty = hard
+        for (const area of (info.weakAreas || [])) {
+          if (t.title.toLowerCase().includes(area.toLowerCase())) difficulty = 'hard';
+        }
+
+        // Per-topic overrides (pattern match)
+        for (const ov of (info.topicOverrides || [])) {
+          if (t.title.toLowerCase().includes((ov.pattern || '').toLowerCase())) {
+            if (ov.difficulty)    difficulty    = ov.difficulty;
+            if (ov.startingState) startingState = ov.startingState;
+          }
+        }
+
+        return { ...t, difficulty, startingState };
+      });
+    },
+
     async doGenerateTopics() {
       this.loading    = true;
       this.loadingMsg = 'Asking AI to generate your topic list…';
       this.error      = null;
 
       try {
-        let broadTopics    = [];
-        let granularTopics = [];
+        // ── Predefined exam: load topics from JSON, skip AI topic generation ──
+        if (this.selectedPredefinedExam && this.topicInputMode === 'examName') {
+          this.loadingMsg = `Loading ${this.selectedPredefinedExam.name}…`;
+          const examData = await StudyExams.loadExam(this.selectedPredefinedExam.id);
 
-        if (this.topicInputMode === 'broadList') {
-          broadTopics = this.broadTopicsText.split('\n').map(s => s.trim()).filter(Boolean);
+          const flat = StudyApi.flattenHierarchical(examData.topics || []);
+
+          // Apply freeText adjustments locally if any (no AI call for predefined exams)
+          let freeTextInfo = {};
+          if (this.freeText.trim()) {
+            this.loadingMsg = 'Applying your notes…';
+            freeTextInfo = await StudyApi.parseFreeText(this.freeText, this.settings.apiKey, this.settings.model);
+          }
+
+          const titleToId = {};
+          this.topics = flat.map(t => {
+            const id = this._nextTopicId++;
+            if (t.isGroup) titleToId[t.title] = id;
+            return {
+              id,
+              title:         t.title,
+              isGroup:       t.isGroup,
+              parentId:      t.parentTitle ? (titleToId[t.parentTitle] || null) : null,
+              difficulty:    t.difficulty,
+              startingState: t.startingState || 'Not Started',
+            };
+          });
+
+          // Apply free text adjustments to leaf topics
+          this._applyFreeTextInfo(freeTextInfo);
+          this.navigate('step2');
+          return;
         }
+
         if (this.topicInputMode === 'granularList') {
-          granularTopics = this.granularTopicsText.split('\n').map(s => s.trim()).filter(Boolean);
+          // Parse user input into hierarchy first, then send only leaf titles to AI
+          const parsed = parseHierarchyInput(this.granularTopicsText);
+          const leafItems = parsed.filter(t => !t.isGroup);
+
+          const raw = await StudyApi.generateTopics({
+            mode:            'granularList',
+            granularTopics:  leafItems.map(t => t.title),
+            examName:        this.examName,
+            freeText:        this.freeText,
+            apiKey:          this.settings.apiKey,
+            model:           this.settings.model,
+          });
+
+          // Merge difficulty/startingState from AI response back into parsed hierarchy
+          let leafIdx = 0;
+          const tempIdToNewId = {};
+          const allTopics = parsed.map(t => {
+            const id = this._nextTopicId++;
+            tempIdToNewId[t._tempId] = id;
+            if (t.isGroup) {
+              return { id, title: t.title, isGroup: true, parentId: null, difficulty: null, startingState: null, _tempId: t._tempId, _parentTempId: t._parentTempId };
+            }
+            const ai = raw[leafIdx++] || {};
+            return { id, title: t.title, isGroup: false, difficulty: ai.difficulty || 'medium', startingState: ai.startingState || 'Not Started', _tempId: t._tempId, _parentTempId: t._parentTempId };
+          });
+
+          // Resolve _parentTempId → parentId and strip temp fields
+          this.topics = allTopics.map(({ _tempId, _parentTempId, ...t }) => ({
+            ...t,
+            parentId: _parentTempId ? (tempIdToNewId[_parentTempId] || null) : null,
+          }));
+
+        } else {
+          // Modes 1 & 2: API returns flat array with isGroup/parentTitle
+          const broadTopics = this.topicInputMode === 'broadList'
+            ? this.broadTopicsText.split('\n').map(s => s.trim()).filter(Boolean)
+            : [];
+
+          const flat = await StudyApi.generateTopics({
+            mode:       this.topicInputMode,
+            examName:   this.examName,
+            broadTopics,
+            freeText:   this.freeText,
+            apiKey:     this.settings.apiKey,
+            model:      this.settings.model,
+          });
+
+          // flat = [{ title, isGroup, parentTitle, difficulty, startingState }]
+          // Assign IDs and resolve parentTitle → parentId
+          const titleToId = {};
+          const withIds = flat.map(t => {
+            const id = this._nextTopicId++;
+            if (t.isGroup) titleToId[t.title] = id;
+            return { ...t, id };
+          });
+          this.topics = withIds.map(({ parentTitle, ...t }) => ({
+            ...t,
+            parentId: parentTitle ? (titleToId[parentTitle] || null) : null,
+          }));
         }
-
-        const raw = await StudyApi.generateTopics({
-          mode:            this.topicInputMode,
-          examName:        this.examName,
-          broadTopics,
-          granularTopics,
-          freeText:        this.freeText,
-          apiKey:          this.settings.apiKey,
-          model:           this.settings.model,
-        });
-
-        this.topics = raw.map((t, i) => ({
-          id:            this._nextTopicId++,
-          title:         t.title,
-          difficulty:    t.difficulty,
-          startingState: t.startingState,
-        }));
 
         this.navigate('step2');
       } catch (e) {
@@ -1270,13 +1600,101 @@ window.StudyApp = {
       this.dragOverIdx = null;
     },
 
+    // ── Group / hierarchy helpers ───────────────────────────────────────────
+
+    addGroup() {
+      this.topics.push({
+        id:            this._nextTopicId++,
+        title:         'New Group',
+        isGroup:       true,
+        parentId:      null,
+        difficulty:    null,
+        startingState: null,
+      });
+    },
+
+    addSubTopic(parentId) {
+      let insertIdx = this.topics.findIndex(t => t.id === parentId);
+      // Find last existing sub-topic of this group
+      for (let i = insertIdx + 1; i < this.topics.length; i++) {
+        if (this.topics[i].parentId === parentId) insertIdx = i;
+        else break;
+      }
+      this.topics.splice(insertIdx + 1, 0, {
+        id:            this._nextTopicId++,
+        title:         'New sub-topic',
+        isGroup:       false,
+        parentId,
+        difficulty:    'medium',
+        startingState: 'Not Started',
+      });
+    },
+
+    deleteGroup(groupId) {
+      this.topics = this.topics.filter(t => t.id !== groupId && t.parentId !== groupId);
+    },
+
+    toggleGroupCollapse(groupId) {
+      this.collapsedGroups = {
+        ...this.collapsedGroups,
+        [groupId]: !this.collapsedGroups[groupId],
+      };
+    },
+
+    isGroupCollapsed(groupId) {
+      return !!this.collapsedGroups[groupId];
+    },
+
+    subtopicCount(groupId) {
+      return this.topics.filter(t => t.parentId === groupId).length;
+    },
+
+    groupBulkDifficulty(groupId, value) {
+      if (!value) return;
+      this.topics = this.topics.map(t =>
+        t.parentId === groupId ? { ...t, difficulty: value } : t
+      );
+    },
+
+    groupBulkState(groupId, value) {
+      if (!value) return;
+      this.topics = this.topics.map(t =>
+        t.parentId === groupId ? { ...t, startingState: value } : t
+      );
+    },
+
+    moveSubTopic(topicId, dir) {
+      const idx = this.topics.findIndex(t => t.id === topicId);
+      if (idx < 0) return;
+      const parentId = this.topics[idx].parentId;
+      // Find siblings (same parentId)
+      const siblings = this.topics
+        .map((t, i) => ({ t, i }))
+        .filter(({ t }) => t.parentId === parentId);
+      const pos = siblings.findIndex(({ t }) => t.id === topicId);
+      const swapPos = pos + dir;
+      if (swapPos < 0 || swapPos >= siblings.length) return;
+      const swapIdx = siblings[swapPos].i;
+      const copy = [...this.topics];
+      [copy[idx], copy[swapIdx]] = [copy[swapIdx], copy[idx]];
+      this.topics = copy;
+    },
+
+    toggleChartCollapsed() {
+      this.chartCollapsed = !this.chartCollapsed;
+      this.$nextTick(() => this.renderChart());
+    },
+
     // ── Step 3 → Step 4 ────────────────────────────────────────────────────
 
     // Build the generatePlan config from current Vue state.
     _planConfig() {
-      const planTopics  = this.topics.map(t => ({
-        id: t.id, name: t.title, difficulty: t.difficulty, startingState: t.startingState,
-      }));
+      // Groups are organisational only — filter them before passing to the scheduler
+      const planTopics  = this.topics
+        .filter(t => !t.isGroup)
+        .map(t => ({
+          id: t.id, name: t.title, difficulty: t.difficulty, startingState: t.startingState,
+        }));
       const srIntervals = this.settingsSrText
         .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
       return {
@@ -1303,9 +1721,19 @@ window.StudyApp = {
     _applyPlanResult(result) {
       this.planResult       = result;
       this.hydratedCalendar = hydrateCalendar(result.calendar, result.topics, result.mocks);
-      this.chartTopicsData  = result.topics.map(t => ({
-        id: t.id, title: t.name, totalPN: t.totalPN, startingState: t.startingState,
+
+      // Build chartTopicsData from this.topics (includes groups) merged with plan results (leaf data)
+      const planById = {};
+      result.topics.forEach(pt => { planById[pt.id] = pt; });
+      this.chartTopicsData = this.topics.map(t => ({
+        id:            t.id,
+        title:         t.title,
+        isGroup:       t.isGroup  || false,
+        parentId:      t.parentId || null,
+        totalPN:       planById[t.id]?.totalPN       || 4,
+        startingState: planById[t.id]?.startingState || t.startingState || 'Not Started',
       }));
+
       // Auto-expand the overflow panel and the schedule sub-section when the plan doesn't fit.
       this.overflowExpanded     = result.overflow.hasOverflow;
       this.overflowEditSchedule = result.overflow.hasOverflow;
@@ -1389,19 +1817,25 @@ window.StudyApp = {
       const canvas = this.$refs.chartCanvas;
       if (!canvas || !this.planResult) return;
 
-      const stateMap = StudyChart.buildStateMap(
-        this.chartTopicsData,
-        this.hydratedCalendar,
-        this.planResult.mocks,
-      );
       const dateKeys = this.hydratedCalendar.map(d =>
         d.date instanceof Date ? d.date.toISOString().slice(0, 10) : d.date
       );
-
-      this._chartStateMap = stateMap;
       this._chartDateKeys = dateKeys;
 
-      StudyChart.draw(canvas, this.chartTopicsData, this.hydratedCalendar, this.planResult.mocks);
+      if (this.chartCollapsed && this.hasGroups) {
+        // Collapsed view: one row per group (dominant state) + standalone topics
+        const stateMap = StudyChart.buildCollapsedStateMap(
+          this.chartTopicsData, this.hydratedCalendar, this.planResult.mocks,
+        );
+        this._chartStateMap = stateMap;
+        StudyChart.draw(canvas, null, this.hydratedCalendar, this.planResult.mocks, {}, stateMap);
+      } else {
+        // Expanded view: one row per study topic (leaf topics only)
+        const leafTopics = this.chartTopicsData.filter(t => !t.isGroup);
+        const stateMap   = StudyChart.buildStateMap(leafTopics, this.hydratedCalendar, this.planResult.mocks);
+        this._chartStateMap = stateMap;
+        StudyChart.draw(canvas, leafTopics, this.hydratedCalendar, this.planResult.mocks, {}, stateMap);
+      }
     },
 
     onChartMouseMove(evt) {
@@ -1640,6 +2074,13 @@ window.StudyApp = {
 
   mounted() {
     this.settingsSrText = (this.settings.srIntervals || [1,6,16,45,131]).join(', ');
+
+    // Load predefined exam index (silently ignore if unavailable — e.g. file:// protocol)
+    if (typeof StudyExams !== 'undefined') {
+      StudyExams.loadIndex()
+        .then(list => { this.predefinedExams = list || []; })
+        .catch(() => {});
+    }
 
     // Restore in-progress plan from localStorage if present
     const saved = StudyStorage.loadCurrentPlan();

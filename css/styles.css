@@ -335,6 +335,17 @@ input[type=number] { width: auto; min-width: 80px; }
 .topics-table tr.dragging { opacity: .5; }
 .topics-table tr.drag-over td { border-top: 2px solid var(--c-accent); }
 
+/* Hierarchy: group header rows */
+.topics-table tr.topic-group-row td {
+  background: #eff6ff;
+  border-bottom: 1px solid #bfdbfe;
+}
+.topics-table tr.topic-group-row:hover td { background: #dbeafe; }
+
+/* Hierarchy: sub-topic rows */
+.topics-table tr.topic-subtopic-row td { background: #fafafa; }
+.topics-table tr.topic-subtopic-row:hover td { background: #f3f4f6; }
+
 .topics-table .col-num   { width: 40px; color: var(--c-muted); }
 .topics-table .col-title { min-width: 220px; }
 .topics-table .col-diff  { width: 110px; }

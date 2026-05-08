@@ -151,23 +151,89 @@
     return Object.values(byId);
   }
 
+  // ─── Collapsed state map (one row per group, dominant state from sub-topics) ──
+
+  /**
+   * Build a stateMap where groups are collapsed to a single row per group.
+   * Standalone topics (parentId=null, isGroup=false) pass through unchanged.
+   * Group state on each day = most common state across all sub-topics (with priority tie-break).
+   *
+   * @param {object[]} allTopics   chartTopicsData — includes group and leaf topics
+   * @param {object[]} calendar    hydratedCalendar
+   * @param {object[]} mockEvents
+   * @returns {object[]}  [{ id, title, states: Map<dateKey, {state,progress}> }]
+   */
+  function buildCollapsedStateMap(allTopics, calendar, mockEvents) {
+    const leafTopics = allTopics.filter(t => !t.isGroup);
+    const expanded   = buildStateMap(leafTopics, calendar, mockEvents);
+
+    const leafById = {};
+    expanded.forEach(row => { leafById[row.id] = row; });
+
+    const dateKeys = calendar.map(d =>
+      d.date instanceof Date ? d.date.toISOString().slice(0, 10) : d.date
+    );
+
+    const STATE_PRIORITY = ['Mock','PostMock','Reviewing','Practicing','Learning','Ready to Practice','Practice Completed','Not Started'];
+
+    const result = [];
+    for (const topic of allTopics) {
+      if (topic.isGroup) {
+        // Aggregate all sub-topics
+        const subIds  = allTopics.filter(t => t.parentId === topic.id).map(t => t.id);
+        const subRows = subIds.map(id => leafById[id]).filter(Boolean);
+
+        const states = new Map();
+        for (const dk of dateKeys) {
+          if (subRows.length === 0) {
+            states.set(dk, { state: 'Not Started', progress: 0 });
+            continue;
+          }
+          const counts = {};
+          let totalProgress = 0;
+          for (const row of subRows) {
+            const snap = row.states.get(dk) || { state: 'Not Started', progress: 0 };
+            counts[snap.state] = (counts[snap.state] || 0) + 1;
+            totalProgress += snap.progress;
+          }
+          // Dominant = highest count; tie-break by priority order
+          let dominant = 'Not Started', maxCount = 0;
+          for (const [st, cnt] of Object.entries(counts)) {
+            const beats = cnt > maxCount ||
+              (cnt === maxCount && STATE_PRIORITY.indexOf(st) < STATE_PRIORITY.indexOf(dominant));
+            if (beats) { dominant = st; maxCount = cnt; }
+          }
+          states.set(dk, { state: dominant, progress: totalProgress / subRows.length });
+        }
+        result.push({ id: topic.id, title: topic.title, states });
+      } else if (!topic.parentId) {
+        // Standalone
+        const row = leafById[topic.id];
+        if (row) result.push(row);
+      }
+      // Skip sub-topics (parentId != null) — represented by their group row
+    }
+    return result;
+  }
+
   // ─── Main draw function ─────────────────────────────────────────────────────
 
   /**
    * @param {HTMLCanvasElement} canvas
-   * @param {object[]}  topics      [{ title, totalPN, startingState }]
-   * @param {object[]}  calendar    hydratedCalendar
+   * @param {object[]}  topics           [{ title, totalPN, startingState }] — used only when prebuiltStateMap is null
+   * @param {object[]}  calendar         hydratedCalendar
    * @param {object[]}  mockEvents
-   * @param {object}    opts        { rowH, labelW, cellW, fontSize }
+   * @param {object}    opts             { rowH, labelW, cellW, fontSize }
+   * @param {object[]|null} prebuiltStateMap  pre-computed state map (skips buildStateMap when provided)
    */
-  function draw(canvas, topics, calendar, mockEvents, opts = {}) {
+  function draw(canvas, topics, calendar, mockEvents, opts = {}, prebuiltStateMap = null) {
     const ROW_H    = opts.rowH    || 28;
     const LABEL_W  = opts.labelW  || 180;
     const CELL_W   = opts.cellW   || 8;
     const FONT_SZ  = opts.fontSize || 11;
     const HEADER_H = 32;   // space for month labels at top
 
-    const stateMap = buildStateMap(topics, calendar, mockEvents);
+    const stateMap = prebuiltStateMap || buildStateMap(topics, calendar, mockEvents);
 
     const dateKeys = calendar.map(d =>
       d.date instanceof Date ? d.date.toISOString().slice(0, 10) : d.date
@@ -292,5 +358,5 @@
 
   // ─── Public API ─────────────────────────────────────────────────────────────
 
-  return { draw, buildStateMap, hitTest, stateColor, STATE_COLORS, LEGEND_ITEMS };
+  return { draw, buildStateMap, buildCollapsedStateMap, hitTest, stateColor, STATE_COLORS, LEGEND_ITEMS };
 }));

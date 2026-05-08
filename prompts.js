@@ -16,8 +16,21 @@
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict';
 
-  // ─── Shared JSON schema description ────────────────────────────────────────
+  // ─── Shared JSON schema descriptions ───────────────────────────────────────
 
+  const DIFFICULTY_AND_STATE_GUIDE = `
+Difficulty guide:
+  easy   — single concept, few MCQs needed (LN=1, PN=3 sessions)
+  medium — moderate depth, typical study unit (LN=2, PN=4 sessions)
+  hard   — broad or complex unit (LN=3, PN=5 sessions)
+
+Starting state guide (default to "Not Started" unless user notes say otherwise):
+  Not Started — topic not yet touched; full learn → practice → review pipeline
+  Learned     — content already studied; skip learning; begin at Practice MCQs
+  Practicing  — one practice MCQ session already done; PN−1 sessions remaining
+  Reviewing   — all practice MCQs done; begin immediately at first Review session`.trim();
+
+  // Flat schema — used for mode 3 (AI assigns difficulty to user-provided leaf topics only)
   const TOPIC_SCHEMA = `
 Return ONLY a valid JSON array — no markdown fences, no commentary.
 Each element must have exactly these fields:
@@ -25,20 +38,35 @@ Each element must have exactly these fields:
   "difficulty"   : "easy" | "medium" | "hard"
   "startingState": "Not Started" | "Learned" | "Practicing" | "Reviewing"
 
-Difficulty guide:
-  easy   — single concept, few flashcards / MCQs (LN=1, PN=3 sessions needed)
-  medium — moderate depth, typical topic      (LN=2, PN=4 sessions needed)
-  hard   — broad topic, many sub-concepts     (LN=3, PN=5 sessions needed)
-
-Starting state guide (default to "Not Started" unless user notes say otherwise):
-  Not Started — topic not yet touched; full learn → practice → review pipeline
-  Learned     — content already studied; skip learning; begin at Practice MCQs
-  Practicing  — one practice MCQ session already done; PN−1 sessions remaining
-  Reviewing   — all practice MCQs done; begin immediately at first Review session
+${DIFFICULTY_AND_STATE_GUIDE}
 
 Aim for genuinely granular topics — a study session covers one topic comfortably.
 Avoid super-broad entries (e.g., "Contract Law") and avoid trivially narrow ones
 (e.g., "Definition of offer"). Granularity similar to a single lecture or chapter.`.trim();
+
+  // Hierarchical schema — used for modes 1 and 2 (AI produces a two-level structure)
+  const HIERARCHY_SCHEMA = `
+Return ONLY a valid JSON array — no markdown fences, no commentary.
+
+The array contains GROUP items and/or STANDALONE items.
+
+GROUP item — a subject area whose study units are listed as sub-topics:
+{
+  "title": string — short area name (≤ 6 words, e.g. "Contract Law"),
+  "subTopics": [
+    { "title": string, "difficulty": "easy"|"medium"|"hard", "startingState": "Not Started"|"Learned"|"Practicing"|"Reviewing" },
+    ...
+  ]
+}
+
+STANDALONE item — a single study unit with no sub-topics:
+{ "title": string, "difficulty": "easy"|"medium"|"hard", "startingState": "Not Started"|"Learned"|"Practicing"|"Reviewing" }
+
+${DIFFICULTY_AND_STATE_GUIDE}
+
+Group titles are organisational headings only — no study sessions are assigned to them.
+Sub-topic granularity: one sub-topic = one comfortable study session.
+Avoid super-broad leaves (e.g., "Contract Law" as a sub-topic) and trivially narrow ones.`.trim();
 
   const FREE_TEXT_SCHEMA = `
 Return ONLY a valid JSON object — no markdown fences, no commentary.
@@ -67,21 +95,22 @@ Example output:
   // ─── Mode 1: Exam name only ─────────────────────────────────────────────────
 
   /**
-   * The user provided only an exam name. Generate a full granular topic list.
+   * The user provided only an exam name.
+   * Generate a hierarchical topic list (subject groups + granular sub-topics).
    * @param {string} examName  e.g. "SQE FLK1", "CFA Level 1"
    * @param {object} freeTextInfo  parsed output from parseFreeText (may be {})
    */
   function topicsFromExamName(examName, freeTextInfo = {}) {
     const maxNote = freeTextInfo.maxTopics
-      ? `Limit the list to at most ${freeTextInfo.maxTopics} topics.`
-      : 'Aim for a complete list; typically 20–60 topics depending on the exam breadth.';
+      ? `Limit the total number of sub-topics to at most ${freeTextInfo.maxTopics}.`
+      : 'Aim for a complete list; typically 20–60 sub-topics across all groups.';
 
     const weakNote = (freeTextInfo.weakAreas || []).length
-      ? `Mark these topics as "hard" unless they are inherently simple: ${freeTextInfo.weakAreas.join(', ')}.`
+      ? `Mark sub-topics in these areas as "hard" unless inherently simple: ${freeTextInfo.weakAreas.join(', ')}.`
       : '';
 
     const stateNote = freeTextInfo.globalStartingState && freeTextInfo.globalStartingState !== 'Not Started'
-      ? `Set startingState to "${freeTextInfo.globalStartingState}" for ALL topics unless a topicOverride says otherwise.`
+      ? `Set startingState to "${freeTextInfo.globalStartingState}" for ALL sub-topics unless a topicOverride says otherwise.`
       : '';
 
     const overrideNote = (freeTextInfo.topicOverrides || []).length
@@ -90,8 +119,9 @@ Example output:
 
     return {
       system: `You are an expert study planner with deep knowledge of professional and academic exam syllabuses.
-Your job is to produce a granular, well-calibrated topic list for a given exam.
-${TOPIC_SCHEMA}`,
+Your job is to produce a well-organised, hierarchical topic list for a given exam.
+Organise the content into logical subject groups, each containing granular study units as sub-topics.
+${HIERARCHY_SCHEMA}`,
 
       user: [
         `Exam: ${examName}`,
@@ -103,26 +133,26 @@ ${TOPIC_SCHEMA}`,
     };
   }
 
-  // ─── Mode 2: High-level topics ──────────────────────────────────────────────
+  // ─── Mode 2: User provides top-level areas, AI generates sub-topics ──────────
 
   /**
-   * The user provided an exam name and broad topic headings.
-   * Expand each into granular sub-topics.
+   * The user provided the top-level subject areas.
+   * AI generates granular study units as sub-topics under each.
    * @param {string}   examName
    * @param {string[]} broadTopics  e.g. ["Contract Law", "Tort", "Land Law"]
    * @param {object}   freeTextInfo
    */
   function topicsFromBroadList(examName, broadTopics, freeTextInfo = {}) {
     const maxNote = freeTextInfo.maxTopics
-      ? `Keep the total list to at most ${freeTextInfo.maxTopics} topics.`
+      ? `Keep the total number of sub-topics to at most ${freeTextInfo.maxTopics}.`
       : '';
 
     const weakNote = (freeTextInfo.weakAreas || []).length
-      ? `Mark these topics/areas as "hard": ${freeTextInfo.weakAreas.join(', ')}.`
+      ? `Mark sub-topics in these areas as "hard": ${freeTextInfo.weakAreas.join(', ')}.`
       : '';
 
     const stateNote = freeTextInfo.globalStartingState && freeTextInfo.globalStartingState !== 'Not Started'
-      ? `Set startingState to "${freeTextInfo.globalStartingState}" for ALL topics unless a topicOverride says otherwise.`
+      ? `Set startingState to "${freeTextInfo.globalStartingState}" for ALL sub-topics unless a topicOverride says otherwise.`
       : '';
 
     const overrideNote = (freeTextInfo.topicOverrides || []).length
@@ -131,14 +161,15 @@ ${TOPIC_SCHEMA}`,
 
     return {
       system: `You are an expert study planner with deep knowledge of professional and academic exam syllabuses.
-Your job is to expand broad topic headings into granular, well-calibrated sub-topics for a given exam.
-${TOPIC_SCHEMA}`,
+The user has provided their top-level subject areas. Your job is to generate granular study units as sub-topics for each.
+Each broad topic becomes a GROUP in the output, with its study units listed as subTopics.
+Use the exact titles given for the GROUP items; do not rename, merge, or split them.
+${HIERARCHY_SCHEMA}`,
 
       user: [
-        `Exam: ${examName}`,
-        `Expand each of these broad topics into granular sub-topics:`,
+        examName ? `Exam: ${examName}` : '',
+        `For each of the following subject areas, generate granular study units as sub-topics:`,
         broadTopics.map((t, i) => `${i + 1}. ${t}`).join('\n'),
-        'Follow the order of the broad topics; group sub-topics under their parent heading by listing them consecutively.',
         maxNote,
         weakNote,
         stateNote,

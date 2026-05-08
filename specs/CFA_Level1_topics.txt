@@ -1,0 +1,99 @@
+Alternative Investments
+    Introduction to Alternative Investments
+    Private Equity and Hedge Fund Performance
+    Private Capital
+    Real Estate
+    Investing in Land and Commodities
+    Hedge Funds
+    Intro to Crypto
+Corporate Issuers
+    Corporate Finance Fundamentals
+    Understanding Corporate Stakeholders
+    The Essentials of Corporate Governance
+    CCC, Working Capital, and Liquidity
+    Capital Allocation and Investment Decision-Making
+    Capital Structure
+    Deconstructing and Differentiating Business Models
+Derivatives
+    OTC, EDT, Commitments, Claims
+    Forwards, Futures, and Options
+    Benefits, Risks, Uses
+    Convenience Yield, Arbitrage, and Replication
+    Forwards: price and valuation
+    Futures: price and valuation
+    Swaps: price and valuation
+    Options: price and valuation
+    Options: replication, put-call parity
+    The One-Binomial Model
+Economics
+    Market Structures and Firm Behavior
+    Business Cycles: Phases, Related Cycles, and Economic Indicators
+    The Roles, Objectives, and Tools of Fiscal Policy
+    The Roles, Objectives, and Tools of Monetary Policy
+    Geopolitics
+    Trade and Economic Integration
+    FX Quotes, Real Exchange Rate, Currency Pegging
+    FX Rates, Points, and Arbitrage
+Equity Investments
+    Introduction to Financial Markets
+    Market Index Construction and Analysis
+    Market Efficiency and Behavioral Finance
+    Fundamentals of Equity Securities
+    Company Analysis, Industry Analysis, Competitive Analysis, and Financial Forecasting
+    Introduction to Equity Valuation and Analysis
+Ethical and Professional Standards
+    The Profession
+    The Code of Ethics, Recognising the Standards
+    The Standards in Practice
+    GIPS
+Financial Statement Analysis
+    Foundations of Financial Statement Analysis
+    Income Statements
+    Balance Sheets
+    Cash Flows
+    Inventories
+    Analyzing Long-Lived Assets
+    Leases, Pensions, and Share-Based Compensation
+    Income Taxation
+    Financial Reporting and Earnings Management
+    Core Tools of Financial Statement Analysis
+    Forecasting and Modeling
+Fixed Income
+    Fixed Income Instruments: An Introduction
+    Bond Types, Cash Flows
+    The Bond Market
+    Funding and Corporate Issuers
+    Funding and Government Issuers
+    Bond Price & Yield Relationships
+    Advanced Yield Metrics
+    Money Market & Floater Pricing
+    Spot, Par, and Forward Dynamics
+    Horizon and Duration
+    Yield Duration
+    Convexity & Portfolio Risk
+    Effective Duration & Option Risks
+    Credit Risk
+    Creditworthiness of Governments
+    Creditworthiness of Corporations
+    Securitization
+    Asset-Backed Securities
+    Mortgage-Backed Securities
+Portfolio Management
+    Modern Portfolio Theory: Risk and Return
+    Modern Portfolio Theory: Asset Pricing Models
+    The Investment Environment and Portfolio Management Process
+    The Investment Policy Statement and Strategic Asset Allocation
+    Behavioural Finance Foundations
+    Risk Management: An Overview
+Quantitative Methods
+    Interest Rates and Measures of Return
+    Present Value, Implied Growth, and Cash Flow Additivity
+    Descriptive Statistics in Finance
+    Probability in Investment Management
+    Portfolio Management: Risk and Return Calculations
+    Log Returns, Monte Carlo Simulation, and Bootstrap Methods
+    Sampling, the Central Limit Theorem, and Resampling
+    Hypothesis Testing: Principles, Errors, and Statistical Test Methods
+    Tests of Independence
+    Simple Linear Regression
+    Big Data, AI, and Machine Learning in Investment Management
