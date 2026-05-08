@@ -739,10 +739,30 @@ window.StudyApp = {
       </div>
 
       <!-- Download / save row -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <button class="btn btn-secondary btn-sm" @click="doExportDailyCsv()">⬇ Day-by-day CSV</button>
         <button class="btn btn-secondary btn-sm" @click="doExportTopicsCsv()">⬇ Topics CSV</button>
         <button class="btn btn-secondary btn-sm" @click="doExportJson()">⬇ Save plan (JSON)</button>
+      </div>
+
+      <!-- Plan stats bar -->
+      <div v-if="planTotalHours !== null" class="plan-stats-bar">
+        <div class="plan-stat plan-stat--highlight">
+          <span class="plan-stat-value">~{{ planTotalHours }} h</span>
+          <span class="plan-stat-label">total study time</span>
+        </div>
+        <div class="plan-stat">
+          <span class="plan-stat-value">{{ studyDaysWithSessions.length }}</span>
+          <span class="plan-stat-label">study days</span>
+        </div>
+        <div class="plan-stat">
+          <span class="plan-stat-value">{{ planResult.topics.length }}</span>
+          <span class="plan-stat-label">topics</span>
+        </div>
+        <div class="plan-stat" v-if="planResult.mocks.filter(m => m.type === 'mock').length > 0">
+          <span class="plan-stat-value">{{ planResult.mocks.filter(m => m.type === 'mock').length }}</span>
+          <span class="plan-stat-label">mock exams</span>
+        </div>
       </div>
 
       <!-- Tabs -->
@@ -795,6 +815,9 @@ window.StudyApp = {
 
       <!-- ── Tab: Day-by-Day ── -->
       <div v-if="activeTab === 'daily'">
+        <div v-if="planTotalHours !== null" style="margin-bottom:12px;font-size:.85rem;color:var(--c-muted)">
+          {{ studyDaysWithSessions.length }} study days &nbsp;·&nbsp; ~{{ planTotalHours }} h total
+        </div>
         <template v-for="day in studyDaysWithSessions" :key="day.dateKey">
           <div class="day-block">
             <div class="day-header" @click="toggleDay(day.dateKey)" style="cursor:pointer;user-select:none">
@@ -858,6 +881,13 @@ window.StudyApp = {
                   <span v-if="grp.lastPracticeDate">{{ formatDate(grp.lastPracticeDate) }}</span>
                   <span v-if="!grp.firstLearnDate && !grp.lastPracticeDate">—</span>
                 </td>
+              </tr>
+              <!-- Total row -->
+              <tr style="font-weight:600;border-top:2px solid var(--c-border)">
+                <td>Total</td>
+                <td>{{ collapsedTopicGroups.reduce((s, g) => s + g.totalSessions, 0) }}</td>
+                <td>~{{ planTotalHours }} h</td>
+                <td></td>
               </tr>
             </tbody>
           </table>
@@ -1499,6 +1529,18 @@ window.StudyApp = {
         ...d,
         dateKey: d.date instanceof Date ? d.date.toISOString().slice(0, 10) : d.date,
       }));
+    },
+
+    planTotalHours() {
+      if (!this.hydratedCalendar.length) return null;
+      let totalMins = 0;
+      for (const day of this.hydratedCalendar) {
+        for (const s of (day.sessions || [])) {
+          if (s.activityType === 'mock')          totalMins += 90;
+          else if (s.activityType !== 'postMock') totalMins += (this.settings.sessionDuration || 20);
+        }
+      }
+      return Math.round(totalMins / 60);
     },
 
     topicSummaries() {

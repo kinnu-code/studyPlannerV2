@@ -645,6 +645,43 @@ input[type=number] { width: auto; min-width: 80px; }
 
 /* ─── Overflow / negotiation ───────────────────────────────────────────────── */
 
+/* ── Plan stats bar ─────────────────────────────────────────────────── */
+.plan-stats-bar {
+  display: flex;
+  gap: 0;
+  background: #f8faff;
+  border: 1px solid #dbeafe;
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.plan-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 24px;
+  border-right: 1px solid #dbeafe;
+  flex: 1;
+}
+.plan-stat:last-child { border-right: none; }
+.plan-stat--highlight {
+  background: #eff6ff;
+}
+.plan-stat-value {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: #1e3a5f;
+  line-height: 1.1;
+}
+.plan-stat--highlight .plan-stat-value { color: #1d4ed8; }
+.plan-stat-label {
+  font-size: .72rem;
+  color: var(--c-muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-top: 2px;
+}
+
 .overflow-panel {
   border: 2px solid var(--c-warn);
   border-radius: var(--radius);
