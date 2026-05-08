@@ -221,12 +221,16 @@ window.StudyApp = {
 
   <!-- ── Header ──────────────────────────────────────────────────────────── -->
   <header class="app-header">
-    <span class="logo" style="cursor:pointer" @click="navigate('home')">Study Planner</span>
+    <span class="logo" style="cursor:pointer" @click="navigate('home')">
+      <img src="assets/appLogo.png" class="header-app-logo" alt="">
+      Study Planner
+    </span>
     <div class="breadcrumb" v-if="screen !== 'home'">
       <span>›</span>
       <span>{{ screenLabel }}</span>
     </div>
     <div class="header-actions">
+      <img src="assets/KinnuLogo.jpeg" class="header-kinnu-logo" alt="Kinnu">
       <button class="btn btn-ghost btn-sm" @click="navigate('settings')">⚙ Settings</button>
     </div>
   </header>
@@ -249,6 +253,7 @@ window.StudyApp = {
     <!-- ════════════════ HOME ════════════════ -->
     <template v-if="!loading && screen === 'home'">
       <div class="home-hero">
+        <img src="assets/appLogo.png" class="home-hero-logo" alt="Study Planner">
         <h1>Smart Study Planner</h1>
         <p>Generate an optimised, day-by-day study plan with spaced repetition — tailored to your exam and schedule.</p>
         <div class="home-actions">

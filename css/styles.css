@@ -60,6 +60,26 @@ a:hover { text-decoration: underline; }
   font-size: 1.05rem;
   color: var(--c-accent);
   letter-spacing: -.3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-app-logo {
+  height: 32px;
+  width: 32px;
+  border-radius: 7px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.header-kinnu-logo {
+  height: 24px;
+  width: 24px;
+  object-fit: contain;
+  border-radius: 3px;
+  opacity: 0.75;
+  margin-right: 4px;
 }
 
 .app-header .breadcrumb {
@@ -771,6 +791,15 @@ input[type=number] { width: auto; min-width: 80px; }
 .home-hero {
   text-align: center;
   padding: 60px 24px 48px;
+}
+
+.home-hero-logo {
+  width: 88px;
+  height: 88px;
+  border-radius: 20px;
+  object-fit: contain;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12);
 }
 
 .home-hero h1 {
