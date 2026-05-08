@@ -21,7 +21,7 @@ const EXAM   = D('2026-09-07'); // 14 weeks later (Monday)
 const FIRST_WEEK = { mon: 2, tue: 2, wed: 2, thu: 2, fri: 2, sat: 0, sun: 0 };
 const LAST_WEEK  = { mon: 4, tue: 4, wed: 4, thu: 4, fri: 4, sat: 0, sun: 0 };
 
-const SR = [6, 16, 45, 131];
+const SR = [1, 6, 16, 45, 131];
 
 const SETTINGS = {
   lnTable: { easy: 1, medium: 2, hard: 3 },
@@ -415,7 +415,7 @@ describe('T7 – Post-mock revision', () => {
 // ─── T8  Spaced repetition ────────────────────────────────────────────────────
 describe('T8 – Spaced repetition', () => {
 
-  test('T8.1 first review is on or after pnCompleteDate + 1 day', () => {
+  test('T8.1 first review is on or after pnCompleteDate + srIntervals[0] days', () => {
     const { calendar, topics } = makePlan();
     for (const topic of topics) {
       if (!topic.pnCompleteDate) continue;
@@ -424,12 +424,12 @@ describe('T8 – Spaced repetition', () => {
         .map(day => day.date.getTime());
       if (reviews.length === 0) continue;
       const earliest = Math.min(...reviews);
-      const target   = topic.pnCompleteDate.getTime() + 86400000; // always 1 day
+      const target   = topic.pnCompleteDate.getTime() + SR[0] * 86400000;
       expect(earliest).toBeGreaterThanOrEqual(target);
     }
   });
 
-  test('T8.4 first review lands on the first study day after PN completes', () => {
+  test('T8.4 first review lands on the first study day on or after pnCompleteDate + srIntervals[0]', () => {
     // Single topic, ample sessions — no competition for the slot
     const { calendar, topics } = planner.generatePlan({
       topics:    [{ id: 'X', name: 'X', difficulty: 'easy', startingState: 'Not Started' }],
@@ -440,16 +440,16 @@ describe('T8 – Spaced repetition', () => {
     });
     const topic = topics[0];
     if (!topic.pnCompleteDate) return;
-    const firstStudyDayAfterPN = calendar.find(d =>
-      d.totalSessions > 0 && !d.blockedBy &&
-      d.date.getTime() > topic.pnCompleteDate.getTime()
+    const targetMs = topic.pnCompleteDate.getTime() + SR[0] * 86400000;
+    const firstEligibleDay = calendar.find(d =>
+      d.totalSessions > 0 && !d.blockedBy && d.date.getTime() >= targetMs
     );
     const firstReviewDay = calendar.find(d =>
       d.sessions.some(s => s.topicId === 'X' && s.activityType === 'review')
     );
     expect(firstReviewDay).toBeTruthy();
-    expect(firstStudyDayAfterPN).toBeTruthy();
-    expect(firstReviewDay.date.getTime()).toBe(firstStudyDayAfterPN.date.getTime());
+    expect(firstEligibleDay).toBeTruthy();
+    expect(firstReviewDay.date.getTime()).toBe(firstEligibleDay.date.getTime());
   });
 
   test('T8.2 each successive review respects the minimum gap from the previous', () => {
@@ -461,8 +461,8 @@ describe('T8 – Spaced repetition', () => {
       reviewDays.sort((a, b) => a - b);
       for (let i = 1; i < reviewDays.length; i++) {
         const gapDays = (reviewDays[i] - reviewDays[i - 1]) / 86400000;
-        // SR[i-1] is the inter-review gap applied after completing review i-1
-        expect(gapDays).toBeGreaterThanOrEqual(SR[i - 1]);
+        // SR[i] is the inter-review gap after completing review i-1 (SR[0] is PN→review0 gap)
+        expect(gapDays).toBeGreaterThanOrEqual(SR[i]);
       }
     }
   });
@@ -486,7 +486,7 @@ describe('T8 – Spaced repetition', () => {
       day.sessions.some(s => s.topicId === 'R' && s.activityType === 'review')
     );
     expect(firstReview).toBeTruthy();
-    const minTarget = START.getTime() + 86400000; // 1 day after plan start
+    const minTarget = START.getTime() + SR[0] * 86400000; // srIntervals[0] days after plan start
     expect(firstReview.date.getTime()).toBeGreaterThanOrEqual(minTarget);
   });
 });
@@ -861,7 +861,7 @@ describe('T14 – Sequential learning mode', () => {
         .map(d => d.date.getTime());
       if (reviews.length === 0) continue;
       const earliest = Math.min(...reviews);
-      expect(earliest).toBeGreaterThanOrEqual(topic.pnCompleteDate.getTime() + 86400000);
+      expect(earliest).toBeGreaterThanOrEqual(topic.pnCompleteDate.getTime() + SR[0] * 86400000);
     }
   });
 

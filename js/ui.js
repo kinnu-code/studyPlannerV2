@@ -916,8 +916,8 @@ window.StudyApp = {
                 <div class="form-group">
                   <label>Spaced repetition intervals (comma-separated day gaps)</label>
                   <input type="text" class="sr-input" v-model="settingsSrText"
-                         placeholder="6, 16, 45, 131" />
-                  <span class="form-hint">Gaps between consecutive review sessions. Default: 6, 16, 45, 131</span>
+                         placeholder="1, 6, 16, 45, 131" />
+                  <span class="form-hint">First value = days after last practice MCQ before first review. Remaining values = gaps between consecutive reviews. Default: 1, 6, 16, 45, 131</span>
                 </div>
 
               </div>
@@ -992,7 +992,7 @@ window.StudyApp = {
 
       // Settings page
       advancedExpanded:  false,
-      settingsSrText:    (settings.srIntervals || [6,16,45,131]).join(', '),
+      settingsSrText:    (settings.srIntervals || [1,6,16,45,131]).join(', '),
       prevScreen:        'home',
       prevActiveTab:     'trajectory',
       settingsSnapshot:  null,
@@ -1164,7 +1164,7 @@ window.StudyApp = {
       if (screen === 'settings') {
         this.prevScreen    = this.screen;
         this.prevActiveTab = this.activeTab;
-        this.settingsSrText = (this.settings.srIntervals || [6,16,45,131]).join(', ');
+        this.settingsSrText = (this.settings.srIntervals || [1,6,16,45,131]).join(', ');
         this.settingsSnapshot = JSON.stringify(this.settings);
       }
       this.screen = screen;
@@ -1287,7 +1287,7 @@ window.StudyApp = {
             lastWeek:       this.lastWeek,
             rampMode:       this.rampMode,
             numMocks:       this.numMocks,
-            srIntervals:    srIntervals.length ? srIntervals : [6,16,45,131],
+            srIntervals:    srIntervals.length ? srIntervals : [1,6,16,45,131],
             postMockSameDay: this.settings.postMockSameDay !== false,
             settings: {
               lnTable:                this.settings.lnTable,
@@ -1520,7 +1520,7 @@ window.StudyApp = {
     doCancelSettings() {
       if (this.settingsSnapshot) {
         Object.assign(this.settings, JSON.parse(this.settingsSnapshot));
-        this.settingsSrText = (this.settings.srIntervals || [6,16,45,131]).join(', ');
+        this.settingsSrText = (this.settings.srIntervals || [1,6,16,45,131]).join(', ');
       }
       this.screen    = this.prevScreen;
       this.activeTab = this.prevActiveTab;
@@ -1530,7 +1530,7 @@ window.StudyApp = {
     doSaveSettings() {
       const srArr = this.settingsSrText
         .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
-      this.settings.srIntervals = srArr.length ? srArr : [6,16,45,131];
+      this.settings.srIntervals = srArr.length ? srArr : [1,6,16,45,131];
 
       const changed = JSON.stringify(this.settings) !== this.settingsSnapshot;
       StudyStorage.saveSettings(this.settings);
@@ -1596,7 +1596,7 @@ window.StudyApp = {
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
   mounted() {
-    this.settingsSrText = (this.settings.srIntervals || [6,16,45,131]).join(', ');
+    this.settingsSrText = (this.settings.srIntervals || [1,6,16,45,131]).join(', ');
 
     // Restore in-progress plan from localStorage if present
     const saved = StudyStorage.loadCurrentPlan();

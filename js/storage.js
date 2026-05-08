@@ -26,7 +26,7 @@
     maxDaysBetweenPractice:  7,      // max gap (days) between learn→practice and practice→practice
     lnTable:     { easy: 1, medium: 2, hard: 3 },
     pnTable:     { easy: 3, medium: 4, hard: 5 },
-    srIntervals: [6, 16, 45, 131],
+    srIntervals: [1, 6, 16, 45, 131],
     numMocks:    3,
   };
 

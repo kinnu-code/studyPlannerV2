@@ -338,12 +338,12 @@
     topic.reviewSessionsCompleted++;
     topic.reviewDates.push(cloneDate(day.date));
 
-    // srIntervals governs gaps BETWEEN consecutive reviews.
-    // After completing review at curIdx, the next gap = srIntervals[curIdx].
+    // srIntervals[0] = PN→first-review gap (used when priming the SR clock).
+    // srIntervals[curIdx+1] = gap from review curIdx to the next review.
     const curIdx = topic.nextReviewIndex;
     topic.nextReviewIndex = curIdx + 1;
-    topic.nextReviewTargetDate = curIdx < srIntervals.length
-      ? addDays(day.date, srIntervals[curIdx])
+    topic.nextReviewTargetDate = curIdx + 1 < srIntervals.length
+      ? addDays(day.date, srIntervals[curIdx + 1])
       : null;
   }
 
@@ -378,7 +378,7 @@
     for (const topic of states) {
       if (topic.startingState === 'Reviewing') {
         topic.nextReviewIndex      = 0;
-        topic.nextReviewTargetDate = addDays(startDate, 1);
+        topic.nextReviewTargetDate = addDays(startDate, srIntervals[0]);
       }
     }
 
@@ -462,7 +462,7 @@
           topic.nextReviewIndex === -1
         ) {
           topic.nextReviewIndex      = 0;
-          topic.nextReviewTargetDate = addDays(day.date, 1);
+          topic.nextReviewTargetDate = addDays(day.date, srIntervals[0]);
         }
       }
     }
@@ -515,7 +515,7 @@
       lastWeek,
       rampMode        = 'linear',
       numMocks        = 3,
-      srIntervals     = [6, 16, 45, 131],
+      srIntervals     = [1, 6, 16, 45, 131],
       settings        = {},
       postMockSameDay = true,
     } = config;
