@@ -2168,7 +2168,6 @@ window.StudyApp = {
         settings:         this.settings,
         settingsSrText:   this.settingsSrText,
         completionStatus: this.completionStatus,
-        planTopics:       this.planResult?.topics || [],
       };
     },
 
@@ -2201,23 +2200,6 @@ window.StudyApp = {
       // Update topic start dates to "today" for replanning
       const today = new Date().toISOString().slice(0, 10);
       if (!this.startDate || this.startDate < today) this.startDate = today;
-
-      // Pre-fill "current" state from planTopics if available
-      if (data.planTopics && data.planTopics.length) {
-        const stateFromPlan = {};
-        data.planTopics.forEach(pt => { stateFromPlan[pt.name] = pt; });
-        this.topics = this.topics.map(t => {
-          const pt = stateFromPlan[t.title];
-          if (!pt) return t;
-          // Infer current starting state from planTopics remaining counts
-          let startingState = 'Not Started';
-          if (pt.remainingLN > 0)                                    startingState = 'Not Started';
-          else if (pt.remainingPN > 0 && pt.mcqSessionsDone === 0)   startingState = 'Learned';
-          else if (pt.remainingPN > 0 && pt.mcqSessionsDone > 0)     startingState = 'Practicing';
-          else                                                          startingState = 'Reviewing';
-          return { ...t, startingState };
-        });
-      }
 
       // Keep _nextTopicId above the highest existing topic id to avoid collisions
       if (this.topics.length) {
