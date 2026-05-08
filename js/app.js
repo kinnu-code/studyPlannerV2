@@ -1,5 +1,11 @@
 'use strict';
-/* global Vue, StudyApp */
+/* global Vue, StudyApp, StudyStorage */
 
-const { createApp } = Vue;
-createApp(StudyApp).mount('#app');
+async function bootstrap() {
+  try {
+    const res = await fetch('data/settings.json');
+    if (res.ok) StudyStorage.setDefaults(await res.json());
+  } catch (_) {}
+  Vue.createApp(StudyApp).mount('#app');
+}
+bootstrap();

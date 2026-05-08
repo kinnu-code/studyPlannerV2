@@ -649,7 +649,8 @@ window.StudyApp = {
       <div class="overflow-panel" :class="{ ok: !planResult.overflow.hasOverflow }">
         <div class="overflow-header" @click="overflowExpanded = !overflowExpanded">
           <h3>
-            <span v-if="planResult.overflow.hasOverflow">⚠ Schedule Overflow — action required</span>
+            <span v-if="planResult.overflow.incompleteLearnTopics.length > 0 || planResult.overflow.incompleteMCQTopics.length > 0">⚠ Schedule Overflow — action required</span>
+            <span v-else-if="(planResult.overflow.mockShortfall || 0) > 0">⚠ Mock exams could not all be scheduled — action required</span>
             <span v-else>✓ Plan fits — expand to tweak schedule</span>
           </h3>
           <span>{{ overflowExpanded ? '▲ collapse' : '▼ expand' }}</span>
@@ -661,8 +662,8 @@ window.StudyApp = {
             {{ overflowSummaryText }}
           </div>
 
-          <!-- Auto-adjust button — shown only when there is overflow -->
-          <div v-if="planResult.overflow.hasOverflow"
+          <!-- Auto-adjust button — shown only when there is topic overflow (not mock-only shortfall) -->
+          <div v-if="planResult.overflow.incompleteLearnTopics.length > 0 || planResult.overflow.incompleteMCQTopics.length > 0"
                style="margin-bottom:20px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px">
             <p style="font-size:.88rem;margin-bottom:10px;font-weight:500">
               Let the planner increase your sessions per day automatically to make everything fit:
@@ -1218,7 +1219,6 @@ window.StudyApp = {
       granularTopicsText: '',
       freeText: '',
       predefinedExams:        [],   // loaded from data/exams/index.json
-      selectedPredefinedExam: null, // matched predefined exam object
 
       // Step 2
       topics: [],
@@ -1378,6 +1378,12 @@ window.StudyApp = {
       }[this.screen] || '';
     },
 
+    selectedPredefinedExam() {
+      if (this.topicInputMode !== 'examName') return null;
+      const name = this.examName.trim().toLowerCase();
+      return this.predefinedExams.find(e => e.name.toLowerCase() === name) || null;
+    },
+
     canGenerateTopics() {
       if (this.topicInputMode === 'examName' && !this.examName.trim()) return false;
       if (this.topicInputMode === 'broadList' && !this.broadTopicsText.trim()) return false;
@@ -1391,16 +1397,17 @@ window.StudyApp = {
     overflowSummaryText() {
       if (!this.planResult) return '';
       const ov = this.planResult.overflow;
-      const nameOf = id => {
-        const t = this.planResult.topics.find(t => t.id === id);
-        return t ? t.name : `topic ${id}`;
-      };
       const nLearn    = ov.incompleteLearnTopics.length;
       const nMCQ      = ov.incompleteMCQTopics.length;
       const nReview   = ov.missedReviewTopics.length;
       const nTopics   = this.planResult.topics.length;
       const extraSess = ov.estimatedExtraSessionsPerWeek;
       let msg = '';
+      if ((ov.mockShortfall || 0) > 0) {
+        const placed    = ov.placedMockCount;
+        const requested = placed + ov.mockShortfall;
+        msg += `Only ${placed} of ${requested} mock exam${requested > 1 ? 's' : ''} could be scheduled — the study window is too short. Consider extending the exam date or adding more study days. `;
+      }
       if (nMCQ > 0) {
         msg += `${nMCQ} of ${nTopics} topics will not complete all Practice MCQ sessions before the exam. `;
       }
@@ -1533,10 +1540,8 @@ window.StudyApp = {
     // ── Step 1 → Step 2 ────────────────────────────────────────────────────
 
     onExamNameInput() {
-      const name = this.examName.trim().toLowerCase();
-      this.selectedPredefinedExam = this.predefinedExams.find(
-        e => e.name.toLowerCase() === name
-      ) || null;
+      // selectedPredefinedExam is now a computed property — nothing to do here.
+      // Kept as a hook in case additional on-input logic is needed later.
     },
 
     // Apply structured free-text overrides to this.topics (leaf topics only).
@@ -1959,11 +1964,18 @@ window.StudyApp = {
         this._chartStateMap = stateMap;
         StudyChart.draw(canvas, null, this.hydratedCalendar, this.planResult.mocks, {}, stateMap);
       } else {
-        // Expanded view: one row per study topic (leaf topics only)
-        const leafTopics = this.chartTopicsData.filter(t => !t.isGroup);
-        const stateMap   = StudyChart.buildStateMap(leafTopics, this.hydratedCalendar, this.planResult.mocks);
+        // Expanded view: one row per study topic, with group-header separator rows when groups exist
+        let stateMap;
+        if (this.hasGroups) {
+          stateMap = StudyChart.buildExpandedStateMapWithGroups(
+            this.chartTopicsData, this.hydratedCalendar, this.planResult.mocks,
+          );
+        } else {
+          const leafTopics = this.chartTopicsData.filter(t => !t.isGroup);
+          stateMap = StudyChart.buildStateMap(leafTopics, this.hydratedCalendar, this.planResult.mocks);
+        }
         this._chartStateMap = stateMap;
-        StudyChart.draw(canvas, leafTopics, this.hydratedCalendar, this.planResult.mocks, {}, stateMap);
+        StudyChart.draw(canvas, null, this.hydratedCalendar, this.planResult.mocks, {}, stateMap);
       }
     },
 

@@ -179,6 +179,8 @@
     // so they don't crowd out the primary activity being represented.
     const DOMINANT_STATES = new Set(['Learning','Practicing','Practice Completed','Mock','PostMock']);
     const STATE_PRIORITY  = ['Mock','PostMock','Practicing','Learning','Practice Completed','Reviewing','Ready to Practice','Not Started'];
+    // Never let these passive/waiting states become the dominant label for a group row
+    const EXCLUDED_FROM_GROUP = new Set(['Ready to Practice']);
 
     const result = [];
     for (const topic of allTopics) {
@@ -195,20 +197,23 @@
           }
           let totalProgress = 0;
 
-          // Count only active states first
-          const activeCounts = {};
-          const allCounts    = {};
+          // Count only dominant-state topics; also build a fallback that excludes
+          // passive waiting states (Ready to Practice) so they never dominate.
+          const activeCounts  = {};
+          const fallbackCounts = {};
           for (const row of subRows) {
             const snap = row.states.get(dk) || { state: 'Not Started', progress: 0 };
-            allCounts[snap.state] = (allCounts[snap.state] || 0) + 1;
+            if (!EXCLUDED_FROM_GROUP.has(snap.state)) {
+              fallbackCounts[snap.state] = (fallbackCounts[snap.state] || 0) + 1;
+            }
             if (DOMINANT_STATES.has(snap.state)) {
               activeCounts[snap.state] = (activeCounts[snap.state] || 0) + 1;
             }
             totalProgress += snap.progress;
           }
 
-          // Use active counts if any exist; otherwise fall back to all counts
-          const counts = Object.keys(activeCounts).length > 0 ? activeCounts : allCounts;
+          // Use active counts if any exist; otherwise fall back (Ready to Practice excluded)
+          const counts = Object.keys(activeCounts).length > 0 ? activeCounts : fallbackCounts;
 
           // Dominant = highest count; tie-break by priority order
           let dominant = 'Not Started', maxCount = 0;
@@ -226,6 +231,40 @@
         if (row) result.push(row);
       }
       // Skip sub-topics (parentId != null) — represented by their group row
+    }
+    return result;
+  }
+
+  // ─── Expanded state map with group-header rows ───────────────────────────────
+
+  /**
+   * Build a stateMap for the expanded view that inserts a group-header row
+   * before each group's sub-topics. Standalone topics pass through unchanged.
+   * Group-header rows have isGroupHeader:true and no color data (empty states Map).
+   *
+   * @param {object[]} allTopics   chartTopicsData — includes group and leaf topics
+   * @param {object[]} calendar    hydratedCalendar
+   * @param {object[]} mockEvents
+   * @returns {object[]}  [{ id, title, isGroupHeader?, isSubTopic?, states }]
+   */
+  function buildExpandedStateMapWithGroups(allTopics, calendar, mockEvents) {
+    const leafTopics = allTopics.filter(t => !t.isGroup);
+    const leafRowById = {};
+    buildStateMap(leafTopics, calendar, mockEvents).forEach(row => {
+      leafRowById[row.id] = row;
+    });
+
+    const result = [];
+    for (const topic of allTopics) {
+      if (topic.isGroup) {
+        result.push({ id: topic.id, title: topic.title, isGroupHeader: true, states: new Map() });
+      } else if (topic.parentId) {
+        const row = leafRowById[topic.id];
+        if (row) result.push({ ...row, isSubTopic: true });
+      } else {
+        const row = leafRowById[topic.id];
+        if (row) result.push(row);
+      }
     }
     return result;
   }
@@ -285,15 +324,30 @@
     stateMap.forEach((topicSnap, rowIdx) => {
       const y = HEADER_H + rowIdx * ROW_H;
 
-      // Zebra stripe
+      if (topicSnap.isGroupHeader) {
+        // Group header: blue-tinted band with bold label, no colour cells
+        ctx.fillStyle = '#dbeafe';
+        ctx.fillRect(0, y, totalW, ROW_H);
+        // Left accent stripe
+        ctx.fillStyle = '#3b82f6';
+        ctx.fillRect(0, y, 3, ROW_H);
+        ctx.fillStyle    = '#1e3a5f';
+        ctx.font         = `bold ${FONT_SZ + 1}px system-ui, sans-serif`;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(truncate(topicSnap.title, LABEL_W - 14, ctx), 8, y + ROW_H / 2);
+        return;
+      }
+
+      // Zebra stripe (regular row)
       ctx.fillStyle = rowIdx % 2 === 0 ? '#f9fafb' : '#ffffff';
       ctx.fillRect(0, y, totalW, ROW_H);
 
-      // Topic label
+      // Topic label — sub-topics get a small left indent
+      const textX = topicSnap.isSubTopic ? 14 : 4;
       ctx.fillStyle    = '#111827';
       ctx.font         = `${FONT_SZ}px system-ui, sans-serif`;
       ctx.textBaseline = 'middle';
-      ctx.fillText(truncate(topicSnap.title, LABEL_W - 8, ctx), 4, y + ROW_H / 2);
+      ctx.fillText(truncate(topicSnap.title, LABEL_W - textX - 4, ctx), textX, y + ROW_H / 2);
 
       // Colour cells
       dateKeys.forEach((dk, colIdx) => {
@@ -353,6 +407,7 @@
 
     if (rowIdx < 0 || rowIdx >= stateMap.length)  return null;
     if (colIdx < 0 || colIdx >= dateKeys.length)  return null;
+    if (stateMap[rowIdx].isGroupHeader) return null;
 
     const snap = stateMap[rowIdx].states.get(dateKeys[colIdx]);
     if (!snap) return null;
@@ -372,5 +427,5 @@
 
   // ─── Public API ─────────────────────────────────────────────────────────────
 
-  return { draw, buildStateMap, buildCollapsedStateMap, hitTest, stateColor, STATE_COLORS, LEGEND_ITEMS };
+  return { draw, buildStateMap, buildCollapsedStateMap, buildExpandedStateMapWithGroups, hitTest, stateColor, STATE_COLORS, LEGEND_ITEMS };
 }));

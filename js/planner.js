@@ -576,6 +576,13 @@
     // 5. Detect overflow
     const overflow = detectOverflow(calendar, finalStates, examDate);
 
+    // 6. Detect mock shortfall (fewer mocks placed than requested)
+    const placedMockCount = mocks.filter(m => m.type === 'mock').length;
+    const mockShortfall   = numMocks - placedMockCount;
+    overflow.mockShortfall   = mockShortfall;
+    overflow.placedMockCount = placedMockCount;
+    if (mockShortfall > 0) overflow.hasOverflow = true;
+
     return { calendar, topics: finalStates, mocks, overflow };
   }
 

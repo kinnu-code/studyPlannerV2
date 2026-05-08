@@ -20,7 +20,7 @@
     apiKey:                  '',
     model:                   'gpt-5.4',
     sessionDuration:         20,     // minutes (display only)
-    learningMode:            'interleaved', // 'interleaved' | 'sequential'
+    learningMode:            'sequential',  // 'interleaved' | 'sequential'
     maxNewTopicsPerDay:      4,
     postMockSameDay:         true,   // false = post-mock occupies next study day
     maxDaysBetweenPractice:  7,      // max gap (days) between learn→practice and practice→practice
@@ -29,6 +29,10 @@
     srIntervals: [1, 6, 16, 45, 131],
     numMocks:    3,
   };
+
+  function setDefaults(newDefaults) {
+    Object.assign(DEFAULT_SETTINGS, newDefaults);
+  }
 
   function cloneDefaults() {
     return JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
@@ -248,6 +252,7 @@
 
   return {
     DEFAULT_SETTINGS,
+    setDefaults,
     loadSettings,
     saveSettings,
     loadCurrentPlan,
