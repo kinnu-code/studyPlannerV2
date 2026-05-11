@@ -4,44 +4,6 @@
   "description": "CFA Institute Level 1 Examination. Difficulty ratings based on typical candidate experience and CFA Institute curriculum depth.",
   "topics": [
     {
-      "title": "Ethical and Professional Standards",
-      "subTopics": [
-        { "title": "The Profession", "difficulty": "easy" },
-        { "title": "The Code of Ethics, Recognising the Standards", "difficulty": "medium" },
-        { "title": "The Standards in Practice", "difficulty": "hard" },
-        { "title": "GIPS", "difficulty": "medium" }
-      ]
-    },
-    {
-      "title": "Quantitative Methods",
-      "subTopics": [
-        { "title": "Interest Rates and Measures of Return", "difficulty": "medium" },
-        { "title": "Present Value, Implied Growth, and Cash Flow Additivity", "difficulty": "medium" },
-        { "title": "Descriptive Statistics in Finance", "difficulty": "medium" },
-        { "title": "Probability in Investment Management", "difficulty": "hard" },
-        { "title": "Portfolio Management: Risk and Return Calculations", "difficulty": "hard" },
-        { "title": "Log Returns, Monte Carlo Simulation, and Bootstrap Methods", "difficulty": "hard" },
-        { "title": "Sampling, the Central Limit Theorem, and Resampling", "difficulty": "hard" },
-        { "title": "Hypothesis Testing: Principles, Errors, and Statistical Test Methods", "difficulty": "hard" },
-        { "title": "Tests of Independence", "difficulty": "hard" },
-        { "title": "Simple Linear Regression", "difficulty": "hard" },
-        { "title": "Big Data, AI, and Machine Learning in Investment Management", "difficulty": "medium" }
-      ]
-    },
-    {
-      "title": "Economics",
-      "subTopics": [
-        { "title": "Market Structures and Firm Behavior", "difficulty": "medium" },
-        { "title": "Business Cycles: Phases, Related Cycles, and Economic Indicators", "difficulty": "medium" },
-        { "title": "The Roles, Objectives, and Tools of Fiscal Policy", "difficulty": "medium" },
-        { "title": "The Roles, Objectives, and Tools of Monetary Policy", "difficulty": "medium" },
-        { "title": "Geopolitics", "difficulty": "easy" },
-        { "title": "Trade and Economic Integration", "difficulty": "medium" },
-        { "title": "FX Quotes, Real Exchange Rate, Currency Pegging", "difficulty": "medium" },
-        { "title": "FX Rates, Points, and Arbitrage", "difficulty": "hard" }
-      ]
-    },
-    {
       "title": "Financial Statement Analysis",
       "subTopics": [
         { "title": "Foundations of Financial Statement Analysis", "difficulty": "medium" },
@@ -70,14 +32,31 @@
       ]
     },
     {
-      "title": "Equity Investments",
+      "title": "Quantitative Methods",
       "subTopics": [
-        { "title": "Introduction to Financial Markets", "difficulty": "easy" },
-        { "title": "Market Index Construction and Analysis", "difficulty": "easy" },
-        { "title": "Market Efficiency and Behavioral Finance", "difficulty": "medium" },
-        { "title": "Fundamentals of Equity Securities", "difficulty": "medium" },
-        { "title": "Company Analysis, Industry Analysis, Competitive Analysis, and Financial Forecasting", "difficulty": "hard" },
-        { "title": "Introduction to Equity Valuation and Analysis", "difficulty": "medium" }
+        { "title": "Interest Rates and Measures of Return", "difficulty": "medium" },
+        { "title": "Present Value, Implied Growth, and Cash Flow Additivity", "difficulty": "medium" },
+        { "title": "Descriptive Statistics in Finance", "difficulty": "medium" },
+        { "title": "Probability in Investment Management", "difficulty": "hard" },
+        { "title": "Portfolio Management: Risk and Return Calculations", "difficulty": "hard" },
+        { "title": "Log Returns, Monte Carlo Simulation, and Bootstrap Methods", "difficulty": "hard" },
+        { "title": "Sampling, the Central Limit Theorem, and Resampling", "difficulty": "hard" },
+        { "title": "Hypothesis Testing: Principles, Errors, and Statistical Test Methods", "difficulty": "hard" },
+        { "title": "Tests of Independence", "difficulty": "hard" },
+        { "title": "Simple Linear Regression", "difficulty": "hard" },
+        { "title": "Big Data, AI, and Machine Learning in Investment Management", "difficulty": "medium" }
+      ]
+    },
+    {
+      "title": "Alternative Investments",
+      "subTopics": [
+        { "title": "Introduction to Alternative Investments", "difficulty": "easy" },
+        { "title": "Private Equity and Hedge Fund Performance", "difficulty": "medium" },
+        { "title": "Private Capital", "difficulty": "medium" },
+        { "title": "Real Estate", "difficulty": "medium" },
+        { "title": "Investing in Land and Commodities", "difficulty": "easy" },
+        { "title": "Hedge Funds", "difficulty": "medium" },
+        { "title": "Intro to Crypto", "difficulty": "easy" }
       ]
     },
     {
@@ -105,6 +84,30 @@
       ]
     },
     {
+      "title": "Economics",
+      "subTopics": [
+        { "title": "Market Structures and Firm Behavior", "difficulty": "medium" },
+        { "title": "Business Cycles: Phases, Related Cycles, and Economic Indicators", "difficulty": "medium" },
+        { "title": "The Roles, Objectives, and Tools of Fiscal Policy", "difficulty": "medium" },
+        { "title": "The Roles, Objectives, and Tools of Monetary Policy", "difficulty": "medium" },
+        { "title": "Geopolitics", "difficulty": "easy" },
+        { "title": "Trade and Economic Integration", "difficulty": "medium" },
+        { "title": "FX Quotes, Real Exchange Rate, Currency Pegging", "difficulty": "medium" },
+        { "title": "FX Rates, Points, and Arbitrage", "difficulty": "hard" }
+      ]
+    },
+    {
+      "title": "Equity Investments",
+      "subTopics": [
+        { "title": "Introduction to Financial Markets", "difficulty": "easy" },
+        { "title": "Market Index Construction and Analysis", "difficulty": "easy" },
+        { "title": "Market Efficiency and Behavioral Finance", "difficulty": "medium" },
+        { "title": "Fundamentals of Equity Securities", "difficulty": "medium" },
+        { "title": "Company Analysis, Industry Analysis, Competitive Analysis, and Financial Forecasting", "difficulty": "hard" },
+        { "title": "Introduction to Equity Valuation and Analysis", "difficulty": "medium" }
+      ]
+    },
+    {
       "title": "Derivatives",
       "subTopics": [
         { "title": "OTC, EDT, Commitments, Claims", "difficulty": "medium" },
@@ -120,18 +123,6 @@
       ]
     },
     {
-      "title": "Alternative Investments",
-      "subTopics": [
-        { "title": "Introduction to Alternative Investments", "difficulty": "easy" },
-        { "title": "Private Equity and Hedge Fund Performance", "difficulty": "medium" },
-        { "title": "Private Capital", "difficulty": "medium" },
-        { "title": "Real Estate", "difficulty": "medium" },
-        { "title": "Investing in Land and Commodities", "difficulty": "easy" },
-        { "title": "Hedge Funds", "difficulty": "medium" },
-        { "title": "Intro to Crypto", "difficulty": "easy" }
-      ]
-    },
-    {
       "title": "Portfolio Management",
       "subTopics": [
         { "title": "Modern Portfolio Theory: Risk and Return", "difficulty": "hard" },
@@ -140,6 +131,15 @@
         { "title": "The Investment Policy Statement and Strategic Asset Allocation", "difficulty": "medium" },
         { "title": "Behavioural Finance Foundations", "difficulty": "medium" },
         { "title": "Risk Management: An Overview", "difficulty": "medium" }
+      ]
+    },
+    {
+      "title": "Ethical and Professional Standards",
+      "subTopics": [
+        { "title": "The Profession", "difficulty": "easy" },
+        { "title": "The Code of Ethics, Recognising the Standards", "difficulty": "medium" },
+        { "title": "The Standards in Practice", "difficulty": "hard" },
+        { "title": "GIPS", "difficulty": "medium" }
       ]
     }
   ]
