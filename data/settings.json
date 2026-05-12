@@ -1,6 +1,7 @@
 {
   "model":                   "gpt-5.4",
   "sessionDuration":         20,
+  "mockDuration":            90,
   "learningMode":            "sequential",
   "maxNewTopicsPerDay":      4,
   "postMockSameDay":         true,

@@ -20,6 +20,7 @@
     apiKey:                  '',
     model:                   'gpt-5.4',
     sessionDuration:         20,     // minutes (display only)
+    mockDuration:            90,     // minutes (display only)
     learningMode:            'sequential',  // 'interleaved' | 'sequential'
     maxNewTopicsPerDay:      4,
     postMockSameDay:         true,   // false = post-mock occupies next study day

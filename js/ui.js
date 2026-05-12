@@ -30,7 +30,7 @@ function sessionReason(session, allSessions, topicFinalState) {
       const done = (topicFinalState?.mcqSessionsDone || 0) - (session._mcqNum || 0);
       const total = topicFinalState?.totalPN || '?';
       const num = session._mcqNum || '?';
-      return `Practice MCQ session ${num} of ${total} for ${t}`;
+      return `Practice session ${num} of ${total} for ${t}`;
     }
     case 'review':
       return `Spaced review of ${t}`;
@@ -98,7 +98,7 @@ function hydrateCalendar(calendar, planTopics, mocks) {
         mcqCount[s.topicId] = (mcqCount[s.topicId] || 0) + 1;
         const num   = mcqCount[s.topicId];
         const total = stateMap[s.topicId]?.totalPN || '?';
-        reason = `Practice MCQ session ${num} of ${total} for ${title}`;
+        reason = `Practice session ${num} of ${total} for ${title}`;
         return { ...s, topicTitle: title, reason, _mcqNum: num };
       }
 
@@ -545,10 +545,10 @@ window.StudyApp = {
             <table>
               <thead><tr><th>State</th><th>Meaning</th><th>Scheduler behaviour</th></tr></thead>
               <tbody>
-                <tr><td><strong>Not Started</strong></td><td>Topic not yet touched</td><td>Full pipeline: Learn → Practice MCQs → Reviews</td></tr>
-                <tr><td><strong>Learned</strong></td><td>Content studied, ready to practice</td><td>Skip learning; begin at Practice MCQs</td></tr>
-                <tr><td><strong>Practicing</strong></td><td>One MCQ session done</td><td>Skip learning; 1 MCQ session already counted</td></tr>
-                <tr><td><strong>Reviewing</strong></td><td>All MCQs done</td><td>Skip learning and MCQs; begin at first Review</td></tr>
+                <tr><td><strong>Not Started</strong></td><td>Topic not yet touched</td><td>Full pipeline: Learn → Practice → Reviews</td></tr>
+                <tr><td><strong>Learned</strong></td><td>Content studied, ready to practice</td><td>Skip learning; begin at Practice sessions</td></tr>
+                <tr><td><strong>Practicing</strong></td><td>One practice session done</td><td>Skip learning; 1 practice session already counted</td></tr>
+                <tr><td><strong>Reviewing</strong></td><td>All practice sessions done</td><td>Skip learning and practice; begin at first Review</td></tr>
               </tbody>
             </table>
           </div>
@@ -912,7 +912,7 @@ window.StudyApp = {
       <!-- ── Tab: Day-by-Day ── -->
       <div v-if="activeTab === 'daily'">
         <div class="session-length-note" style="margin-bottom:10px">
-          Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: 90 min (fixed) &nbsp;·&nbsp; Post-mock revision: full day
+          Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: {{ settings.mockDuration || 90 }} min &nbsp;·&nbsp; Post-mock revision: full day
         </div>
         <div v-if="planTotalHours !== null" style="margin-bottom:12px;font-size:.85rem;color:var(--c-muted)">
           {{ studyDaysWithSessions.length }} study days &nbsp;·&nbsp; ~{{ planTotalHours }} h total
@@ -944,7 +944,7 @@ window.StudyApp = {
       <!-- ── Tab: Topic Summary ── -->
       <div v-if="activeTab === 'topics'">
         <div class="session-length-note" style="margin-bottom:10px">
-          Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: 90 min (fixed)
+          Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: {{ settings.mockDuration || 90 }} min
         </div>
 
         <!-- Controls (only shown when there are groups) -->
@@ -1065,7 +1065,7 @@ window.StudyApp = {
       <!-- ── Tab: Calendar View ── -->
       <div v-if="activeTab === 'calendar'" class="cal-wrap">
         <div class="session-length-note" style="margin-bottom:10px">
-          Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: 90 min (fixed) &nbsp;·&nbsp; Post-mock revision: full day
+          Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: {{ settings.mockDuration || 90 }} min &nbsp;·&nbsp; Post-mock revision: full day
         </div>
 
         <!-- Month navigation -->
@@ -1282,26 +1282,36 @@ window.StudyApp = {
                     <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
                       <input type="radio" value="interleaved" v-model="settings.learningMode" style="margin-top:3px;flex-shrink:0" />
                       <span>
-                        <strong>Interleaved</strong> — once a topic&#39;s learning sessions are done, its practice MCQs are distributed across the schedule alongside other topics.
+                        <strong>Interleaved</strong> — once a topic&#39;s learning sessions are done, its practice sessions are distributed across the schedule alongside other topics.
                       </span>
                     </label>
                     <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
                       <input type="radio" value="sequential" v-model="settings.learningMode" style="margin-top:3px;flex-shrink:0" />
                       <span>
-                        <strong>Sequential</strong> — fully complete one topic (all learning + all practice MCQs) before moving to the next. Reviews still follow the spaced-repetition schedule.
+                        <strong>Sequential</strong> — fully complete one topic (all learning + all practice sessions) before moving to the next. Reviews still follow the spaced-repetition schedule.
                       </span>
                     </label>
                   </div>
                 </div>
 
                 <div class="form-group">
-                  <label>Session duration (display only)</label>
+                  <label>Study session duration (display only)</label>
                   <div class="spinner-group">
                     <button @click="settings.sessionDuration = Math.max(5, settings.sessionDuration - 5)">−</button>
                     <input type="number" min="5" max="120" step="5" v-model.number="settings.sessionDuration" />
                     <button @click="settings.sessionDuration = Math.min(120, settings.sessionDuration + 5)">+</button>
                   </div>
-                  <span class="form-hint">Minutes per session. Does not affect scheduling. Mock exam = always 90 min; post-mock = full day.</span>
+                  <span class="form-hint">Minutes per regular study session. Does not affect scheduling — used for time estimates only.</span>
+                </div>
+
+                <div class="form-group">
+                  <label>Mock exam duration (display only)</label>
+                  <div class="spinner-group">
+                    <button @click="settings.mockDuration = Math.max(30, (settings.mockDuration || 90) - 15)">−</button>
+                    <input type="number" min="30" max="360" step="15" v-model.number="settings.mockDuration" />
+                    <button @click="settings.mockDuration = Math.min(360, (settings.mockDuration || 90) + 15)">+</button>
+                  </div>
+                  <span class="form-hint">Minutes for a full mock exam sitting. Does not affect scheduling — used for time estimates only.</span>
                 </div>
 
                 <div class="form-group">
@@ -1333,17 +1343,18 @@ window.StudyApp = {
 
                 <div class="form-group">
                   <label>Sessions per topic (editable defaults)</label>
-                  <table class="activity-count-table" style="margin-top:8px">
+                  <span class="form-hint" style="display:block;margin-bottom:8px">Number of sessions (not time) assigned to each topic based on difficulty.</span>
+                  <table class="activity-count-table" style="margin-top:0">
                     <thead><tr><th>Activity</th><th>Easy</th><th>Medium</th><th>Hard</th></tr></thead>
                     <tbody>
                       <tr>
-                        <td>Learning sessions (LN)</td>
+                        <td>Learning sessions</td>
                         <td><input type="number" min="1" max="10" v-model.number="settings.lnTable.easy" /></td>
                         <td><input type="number" min="1" max="10" v-model.number="settings.lnTable.medium" /></td>
                         <td><input type="number" min="1" max="10" v-model.number="settings.lnTable.hard" /></td>
                       </tr>
                       <tr>
-                        <td>Practice MCQ sessions (PN)</td>
+                        <td>Practice sessions</td>
                         <td><input type="number" min="1" max="20" v-model.number="settings.pnTable.easy" /></td>
                         <td><input type="number" min="1" max="20" v-model.number="settings.pnTable.medium" /></td>
                         <td><input type="number" min="1" max="20" v-model.number="settings.pnTable.hard" /></td>
@@ -1356,7 +1367,7 @@ window.StudyApp = {
                   <label>Spaced repetition intervals (comma-separated day gaps)</label>
                   <input type="text" class="sr-input" v-model="settingsSrText"
                          placeholder="1, 6, 16, 45, 131" />
-                  <span class="form-hint">First value = days after last practice MCQ before first review. Remaining values = gaps between consecutive reviews. Default: 1, 6, 16, 45, 131</span>
+                  <span class="form-hint">First value = days after last practice session before first review. Remaining values = gaps between consecutive reviews. Default: 1, 6, 16, 45, 131</span>
                 </div>
 
               </div>
@@ -1618,7 +1629,7 @@ window.StudyApp = {
         msg += `Only ${placed} of ${requested} mock exam${requested > 1 ? 's' : ''} could be scheduled — the study window is too short. Consider extending the exam date or adding more study days. `;
       }
       if (nMCQ > 0) {
-        msg += `${nMCQ} of ${nTopics} topics will not complete all Practice MCQ sessions before the exam. `;
+        msg += `${nMCQ} of ${nTopics} topics will not complete all practice sessions before the exam. `;
       }
       if (nLearn > 0) {
         msg += `${nLearn} topic${nLearn > 1 ? 's' : ''} will not finish learning before the exam. `;
@@ -1642,10 +1653,11 @@ window.StudyApp = {
 
     planTotalHours() {
       if (!this.hydratedCalendar.length) return null;
+      const mockMins = this.settings.mockDuration || 90;
       let totalMins = 0;
       for (const day of this.hydratedCalendar) {
         for (const s of (day.sessions || [])) {
-          if (s.activityType === 'mock')          totalMins += 90;
+          if (s.activityType === 'mock')          totalMins += mockMins;
           else if (s.activityType !== 'postMock') totalMins += (this.settings.sessionDuration || 20);
         }
       }
@@ -2512,9 +2524,10 @@ window.StudyApp = {
     },
 
     dayEstimatedTime(sessions) {
+      const mockMins = this.settings.mockDuration || 90;
       let mins = 0;
       for (const s of sessions) {
-        if (s.activityType === 'mock')     { mins += 90; }
+        if (s.activityType === 'mock')          { mins += mockMins; }
         else if (s.activityType !== 'postMock') { mins += this.settings.sessionDuration; }
       }
       return mins > 0 ? `~${mins} min` : '';
