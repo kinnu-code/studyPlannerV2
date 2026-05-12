@@ -483,6 +483,62 @@ input[type=number] { width: auto; min-width: 80px; }
   padding-left: 2px;
 }
 
+/* Time-mode schedule grid — wider columns */
+.schedule-grid.time-mode {
+  grid-template-columns: 100px repeat(2, 140px);
+}
+
+/* +/− time control inside a cell */
+.sg-time-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sg-step-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  color: var(--c-text);
+}
+.sg-step-btn:hover:not(:disabled) { background: var(--c-border); }
+.sg-step-btn:disabled { opacity: .35; cursor: default; }
+
+.sg-time-val {
+  font-size: .88rem;
+  font-weight: 500;
+  min-width: 52px;
+  text-align: center;
+}
+
+.sg-sessions-hint {
+  font-size: .72rem;
+  color: var(--c-muted);
+  padding-left: 2px;
+}
+
+/* Session length info bar shown above tabs and in schedule */
+.session-length-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: .8rem;
+  color: var(--c-muted);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+
 /* ─── Plan view tabs ───────────────────────────────────────────────────────── */
 
 .tab-bar {

@@ -233,11 +233,8 @@
   // Uses STRICTLY-AFTER placement for first and last mocks to prevent blocking
   // the day on which eligibility is achieved.
 
-  function placeMocks(calendar, eligibility, numMocks, postMockSameDay = true) {
+  function placeMocks(calendar, eligibility, numMocks, postMockSameDay = true, fixedMockDates = null) {
     if (numMocks === 0) return [];
-
-    const { firstMockEligibleDate, lastMockEligibleDate } = eligibility;
-    if (!firstMockEligibleDate) return [];
 
     const studyDays = calendar.filter(d => d.totalSessions > 0);
 
@@ -249,32 +246,41 @@
       return studyDays.find(d => d.date.getTime() >= targetDate.getTime()) || null;
     }
 
-    const firstMockDay = firstStudyDayAfter(firstMockEligibleDate);
-    if (!firstMockDay) return [];
+    // Compute desired dates — either from caller-supplied fixed dates or from eligibility
+    let desiredDates = [];
 
-    const lastElig    = lastMockEligibleDate || firstMockEligibleDate;
-    const lastMockDay = firstStudyDayAfter(lastElig);
-
-    // Compute desired dates for each mock
-    const desiredDates = [];
-
-    if (numMocks === 1) {
-      desiredDates.push(firstMockDay.date);
-    } else {
-      desiredDates.push(firstMockDay.date);
-
-      const t0 = firstMockDay.date.getTime();
-      const t1 = lastMockDay ? lastMockDay.date.getTime() : firstMockDay.date.getTime();
-
-      // Middle mocks
-      const middleCount = numMocks - 2;
-      for (let i = 1; i <= middleCount; i++) {
-        const targetMs  = t0 + (t1 - t0) * (i / (middleCount + 1));
-        const nearest   = firstStudyDayOnOrAfter(new Date(targetMs));
-        if (nearest) desiredDates.push(nearest.date);
+    if (fixedMockDates && fixedMockDates.length > 0) {
+      for (const fd of fixedMockDates) {
+        const day = firstStudyDayOnOrAfter(fd);
+        if (day) desiredDates.push(day.date);
       }
+    } else {
+      const { firstMockEligibleDate, lastMockEligibleDate } = eligibility;
+      if (!firstMockEligibleDate) return [];
 
-      if (lastMockDay) desiredDates.push(lastMockDay.date);
+      const firstMockDay = firstStudyDayAfter(firstMockEligibleDate);
+      if (!firstMockDay) return [];
+
+      const lastElig    = lastMockEligibleDate || firstMockEligibleDate;
+      const lastMockDay = firstStudyDayAfter(lastElig);
+
+      if (numMocks === 1) {
+        desiredDates.push(firstMockDay.date);
+      } else {
+        desiredDates.push(firstMockDay.date);
+
+        const t0 = firstMockDay.date.getTime();
+        const t1 = lastMockDay ? lastMockDay.date.getTime() : firstMockDay.date.getTime();
+
+        const middleCount = numMocks - 2;
+        for (let i = 1; i <= middleCount; i++) {
+          const targetMs = t0 + (t1 - t0) * (i / (middleCount + 1));
+          const nearest  = firstStudyDayOnOrAfter(new Date(targetMs));
+          if (nearest) desiredDates.push(nearest.date);
+        }
+
+        if (lastMockDay) desiredDates.push(lastMockDay.date);
+      }
     }
 
     // Deduplicate: bump any collision to the next available study day
@@ -518,6 +524,7 @@
       srIntervals     = [1, 6, 16, 45, 131],
       settings        = {},
       postMockSameDay = true,
+      fixedMockDates  = null,
     } = config;
 
     const mergedSettings = {
@@ -556,8 +563,8 @@
         day.blockedBy = null;
       }
 
-      // Place mocks based on current eligibility estimate
-      mocks = placeMocks(calendar, eligibility, numMocks, postMockSameDay);
+      // Place mocks based on current eligibility estimate (or fixed dates if provided)
+      mocks = placeMocks(calendar, eligibility, numMocks, postMockSameDay, fixedMockDates);
 
       // Pass 2: full schedule with blocked days
       const pass2 = runPass2(calendar, topicStates, srIntervals, mergedSettings, startDate);

@@ -163,7 +163,6 @@ function parseHierarchyInput(text) {
     const l = lines[i];
     if (l.isMarkdown1) {
       l.type = 'group';
-      l.content = trimmed.replace(/^#+\s*/, '');  // will re-do below
       l.content = l.trimmed.replace(/^#+\s*/, '');
     } else if (l.isMarkdown2) {
       l.type = 'subtopic';
@@ -399,7 +398,13 @@ window.StudyApp = {
                 <template v-for="(topic, idx) in topics" :key="topic.id">
 
                   <!-- Group header row -->
-                  <tr v-if="topic.isGroup" class="topic-group-row">
+                  <tr v-if="topic.isGroup" class="topic-group-row"
+                      draggable="true"
+                      :class="{ 'drag-over': dragOverIdx === idx, 'dragging': dragSrcIdx === idx }"
+                      @dragstart="onDragStart($event, idx)"
+                      @dragover.prevent="onDragOver($event, idx)"
+                      @drop.prevent="onDrop($event, idx)"
+                      @dragend="onDragEnd">
                     <td class="col-num" style="cursor:pointer;text-align:center;font-size:.8rem"
                         @click="toggleGroupCollapse(topic.id)">
                       {{ isGroupCollapsed(topic.id) ? '▶' : '▼' }}
@@ -428,6 +433,8 @@ window.StudyApp = {
                       </select>
                     </td>
                     <td class="col-actions">
+                      <button class="btn btn-ghost btn-icon" title="Move group up"   @click="moveGroup(topic.id, -1)">↑</button>
+                      <button class="btn btn-ghost btn-icon" title="Move group down" @click="moveGroup(topic.id,  1)">↓</button>
                       <button class="btn btn-ghost btn-icon" title="Add sub-topic" @click="addSubTopic(topic.id)">+</button>
                       <button class="btn btn-ghost btn-icon" title="Delete group and all its sub-topics" @click="deleteGroup(topic.id)">🗑</button>
                     </td>
@@ -572,21 +579,45 @@ window.StudyApp = {
           </div>
 
           <div class="form-group">
-            <label>Sessions per day</label>
-            <div class="form-hint" style="margin-bottom:8px">Set how many sessions you plan for each weekday. The schedule ramps from First Week to Last Week.</div>
-            <div class="schedule-grid">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px">
+              <label style="margin-bottom:0">Study time per day</label>
+              <button class="btn btn-ghost btn-sm" style="font-size:.75rem;padding:2px 8px"
+                      @click="scheduleViewMode = scheduleViewMode === 'time' ? 'sessions' : 'time'">
+                {{ scheduleViewMode === 'time' ? '⇄ Switch to sessions view' : '⇄ Switch to time view' }}
+              </button>
+            </div>
+            <div class="form-hint" style="margin-bottom:6px">
+              Schedule ramps from First Week to Last Week.
+              <span v-if="scheduleViewMode === 'time'"> Each ± step = one {{ settings.sessionDuration }}-min session.</span>
+            </div>
+            <div class="session-length-note" v-if="scheduleViewMode === 'time'">
+              Session length: {{ settings.sessionDuration }} min
+            </div>
+            <div class="schedule-grid" :class="{ 'time-mode': scheduleViewMode === 'time' }">
               <div class="sg-header">Day</div>
               <div class="sg-header">First week</div>
               <div class="sg-header">Last week</div>
               <template v-for="dow in dowLabels" :key="dow.key">
                 <div class="sg-day">{{ dow.label.slice(0,3) }}</div>
                 <div class="sg-cell">
-                  <input type="number" min="0" max="20" v-model.number="firstWeek[dow.key]" />
-                  <span class="sg-time" v-if="firstWeek[dow.key] > 0">~{{ firstWeek[dow.key] * settings.sessionDuration }} min</span>
+                  <div v-if="scheduleViewMode === 'time'" class="sg-time-ctrl">
+                    <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 1)" :disabled="firstWeek[dow.key] === 0">−</button>
+                    <span class="sg-time-val">{{ fmtMins(firstWeek[dow.key] * settings.sessionDuration) }}</span>
+                    <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(20, firstWeek[dow.key] + 1)">+</button>
+                  </div>
+                  <span v-if="scheduleViewMode === 'time'" class="sg-sessions-hint">{{ firstWeek[dow.key] > 0 ? firstWeek[dow.key] + (firstWeek[dow.key] !== 1 ? ' sessions' : ' session') : 'off' }}</span>
+                  <input v-if="scheduleViewMode !== 'time'" type="number" min="0" max="20" v-model.number="firstWeek[dow.key]" />
+                  <span v-if="scheduleViewMode !== 'time' && firstWeek[dow.key] > 0" class="sg-time">{{ fmtSessionHint(firstWeek[dow.key]) }}</span>
                 </div>
                 <div class="sg-cell">
-                  <input type="number" min="0" max="20" v-model.number="lastWeek[dow.key]" />
-                  <span class="sg-time" v-if="lastWeek[dow.key] > 0">~{{ lastWeek[dow.key] * settings.sessionDuration }} min</span>
+                  <div v-if="scheduleViewMode === 'time'" class="sg-time-ctrl">
+                    <button class="sg-step-btn" @click="lastWeek[dow.key] = Math.max(0, lastWeek[dow.key] - 1)" :disabled="lastWeek[dow.key] === 0">−</button>
+                    <span class="sg-time-val">{{ fmtMins(lastWeek[dow.key] * settings.sessionDuration) }}</span>
+                    <button class="sg-step-btn" @click="lastWeek[dow.key] = Math.min(20, lastWeek[dow.key] + 1)">+</button>
+                  </div>
+                  <span v-if="scheduleViewMode === 'time'" class="sg-sessions-hint">{{ lastWeek[dow.key] > 0 ? lastWeek[dow.key] + (lastWeek[dow.key] !== 1 ? ' sessions' : ' session') : 'off' }}</span>
+                  <input v-if="scheduleViewMode !== 'time'" type="number" min="0" max="20" v-model.number="lastWeek[dow.key]" />
+                  <span v-if="scheduleViewMode !== 'time' && lastWeek[dow.key] > 0" class="sg-time">{{ fmtSessionHint(lastWeek[dow.key]) }}</span>
                 </div>
               </template>
             </div>
@@ -686,19 +717,38 @@ window.StudyApp = {
               {{ overflowEditSchedule ? '▲ Hide schedule' : '1. Update study schedule' }}
             </button>
             <div v-if="overflowEditSchedule" style="margin-top:12px">
-              <div class="schedule-grid">
+              <div class="session-length-note" v-if="scheduleViewMode === 'time'" style="margin-bottom:8px">
+                Session length: {{ settings.sessionDuration }} min
+              </div>
+              <div class="schedule-grid" :class="{ 'time-mode': scheduleViewMode === 'time' }">
                 <div class="sg-header">Day</div>
                 <div class="sg-header">First week</div>
                 <div class="sg-header">Last week</div>
                 <template v-for="dow in dowLabels" :key="dow.key">
                   <div class="sg-day">{{ dow.label.slice(0,3) }}</div>
                   <div class="sg-cell">
-                    <input type="number" min="0" max="20" v-model.number="firstWeek[dow.key]" />
-                    <span class="sg-time" v-if="firstWeek[dow.key] > 0">~{{ firstWeek[dow.key] * settings.sessionDuration }} min</span>
+                    <div v-if="scheduleViewMode === 'time'" class="sg-time-ctrl">
+                      <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 1)" :disabled="firstWeek[dow.key] === 0">−</button>
+                      <span class="sg-time-val">{{ firstWeek[dow.key] * settings.sessionDuration }} min</span>
+                      <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(20, firstWeek[dow.key] + 1)">+</button>
+                    </div>
+                    <span v-if="scheduleViewMode === 'time'" class="sg-sessions-hint">
+                      {{ firstWeek[dow.key] > 0 ? firstWeek[dow.key] + (firstWeek[dow.key] === 1 ? ' session' : ' sessions') : 'off' }}
+                    </span>
+                    <input v-if="scheduleViewMode !== 'time'" type="number" min="0" max="20" v-model.number="firstWeek[dow.key]" />
+                    <span v-if="scheduleViewMode !== 'time' && firstWeek[dow.key] > 0" class="sg-time">~{{ firstWeek[dow.key] * settings.sessionDuration }} min</span>
                   </div>
                   <div class="sg-cell">
-                    <input type="number" min="0" max="20" v-model.number="lastWeek[dow.key]" />
-                    <span class="sg-time" v-if="lastWeek[dow.key] > 0">~{{ lastWeek[dow.key] * settings.sessionDuration }} min</span>
+                    <div v-if="scheduleViewMode === 'time'" class="sg-time-ctrl">
+                      <button class="sg-step-btn" @click="lastWeek[dow.key] = Math.max(0, lastWeek[dow.key] - 1)" :disabled="lastWeek[dow.key] === 0">−</button>
+                      <span class="sg-time-val">{{ lastWeek[dow.key] * settings.sessionDuration }} min</span>
+                      <button class="sg-step-btn" @click="lastWeek[dow.key] = Math.min(20, lastWeek[dow.key] + 1)">+</button>
+                    </div>
+                    <span v-if="scheduleViewMode === 'time'" class="sg-sessions-hint">
+                      {{ lastWeek[dow.key] > 0 ? lastWeek[dow.key] + (lastWeek[dow.key] === 1 ? ' session' : ' sessions') : 'off' }}
+                    </span>
+                    <input v-if="scheduleViewMode !== 'time'" type="number" min="0" max="20" v-model.number="lastWeek[dow.key]" />
+                    <span v-if="scheduleViewMode !== 'time' && lastWeek[dow.key] > 0" class="sg-time">~{{ lastWeek[dow.key] * settings.sessionDuration }} min</span>
                   </div>
                 </template>
               </div>
@@ -734,6 +784,28 @@ window.StudyApp = {
                 <input type="number" min="1" max="10" v-model.number="numMocks" style="width:48px" />
                 <button @click="numMocks = Math.min(10, numMocks + 1)">+</button>
               </div>
+            </div>
+          </div>
+
+          <!-- Option 5: Adjust mock dates -->
+          <div v-if="scheduledMocks.length > 0" style="margin-bottom:16px">
+            <button class="btn btn-secondary btn-sm" @click="overflowEditMocks = !overflowEditMocks">
+              {{ overflowEditMocks ? '▲ Hide mock dates' : '5. Adjust mock exam dates' }}
+            </button>
+            <div v-if="overflowEditMocks" style="margin-top:10px">
+              <div v-for="m in scheduledMocks" :key="m.mockNumber"
+                   style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                <label style="font-size:.84rem;min-width:80px;font-weight:500">Mock {{ m.mockNumber }}</label>
+                <input type="date" style="width:160px"
+                       :value="mockDateOverrides[m.mockNumber] || m.dateStr"
+                       @change="mockDateOverrides = { ...mockDateOverrides, [m.mockNumber]: $event.target.value }" />
+                <span style="font-size:.78rem;color:var(--c-muted)" v-if="!mockDateOverrides[m.mockNumber]">scheduled</span>
+                <span style="font-size:.78rem;color:#2563eb" v-else>changed</span>
+              </div>
+              <button class="btn btn-primary btn-sm" style="margin-top:4px"
+                      @click="applyMockDateOverrides()">
+                ✓ Apply &amp; recalculate
+              </button>
             </div>
           </div>
 
@@ -820,6 +892,9 @@ window.StudyApp = {
 
       <!-- ── Tab: Day-by-Day ── -->
       <div v-if="activeTab === 'daily'">
+        <div class="session-length-note" style="margin-bottom:10px">
+          Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: 90 min (fixed) &nbsp;·&nbsp; Post-mock revision: full day
+        </div>
         <div v-if="planTotalHours !== null" style="margin-bottom:12px;font-size:.85rem;color:var(--c-muted)">
           {{ studyDaysWithSessions.length }} study days &nbsp;·&nbsp; ~{{ planTotalHours }} h total
         </div>
@@ -849,6 +924,9 @@ window.StudyApp = {
 
       <!-- ── Tab: Topic Summary ── -->
       <div v-if="activeTab === 'topics'">
+        <div class="session-length-note" style="margin-bottom:10px">
+          Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: 90 min (fixed)
+        </div>
 
         <!-- Controls (only shown when there are groups) -->
         <div v-if="hasGroups" style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -967,6 +1045,9 @@ window.StudyApp = {
 
       <!-- ── Tab: Calendar View ── -->
       <div v-if="activeTab === 'calendar'" class="cal-wrap">
+        <div class="session-length-note" style="margin-bottom:10px">
+          Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: 90 min (fixed) &nbsp;·&nbsp; Post-mock revision: full day
+        </div>
 
         <!-- Month navigation -->
         <div class="cal-nav">
@@ -1321,6 +1402,9 @@ window.StudyApp = {
       overflowExpanded: false,
       overflowEditSchedule: false,
       overflowEditDate: false,
+      overflowEditMocks: false,
+      mockDateOverrides: {},
+      scheduleViewMode: 'time',
       chartCollapsed:   false,
 
       // Day-by-day collapse state (default: all collapsed)
@@ -1546,6 +1630,18 @@ window.StudyApp = {
         }
       }
       return Math.round(totalMins / 60);
+    },
+
+    scheduledMocks() {
+      if (!this.planResult?.mocks) return [];
+      return this.planResult.mocks
+        .filter(m => m.type === 'mock')
+        .map(m => {
+          const d = m.date;
+          const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+          return { mockNumber: m.mockNumber, dateStr };
+        })
+        .sort((a, b) => a.mockNumber - b.mockNumber);
     },
 
     topicSummaries() {
@@ -1830,17 +1926,82 @@ window.StudyApp = {
       this.dragOverIdx = idx;
     },
 
-    onDrop(evt, idx) {
-      const src  = this.dragSrcIdx;
-      const dest = idx;
-      if (src === null || src === dest) return;
-      const item = this.topics.splice(src, 1)[0];
-      this.topics.splice(dest, 0, item);
+    onDrop(evt, destIdx) {
+      const srcIdx = this.dragSrcIdx;
+      if (srcIdx === null) { this.onDragEnd(); return; }
+
+      const srcTopic = this.topics[srcIdx];
+
+      if (srcTopic?.isGroup) {
+        const { start, end } = this._groupBlock(srcIdx);
+        // Dropped within own block — no-op
+        if (destIdx >= start && destIdx <= end) { this.onDragEnd(); return; }
+        const block     = this.topics.splice(start, end - start + 1);
+        const blockSize = block.length;
+        const adjusted  = destIdx > end ? destIdx - blockSize : destIdx;
+        this.topics.splice(Math.max(0, Math.min(adjusted, this.topics.length)), 0, ...block);
+      } else {
+        if (srcIdx === destIdx) { this.onDragEnd(); return; }
+        const item = this.topics.splice(srcIdx, 1)[0];
+        this.topics.splice(destIdx, 0, item);
+      }
+
+      this.onDragEnd();
     },
 
     onDragEnd() {
       this.dragSrcIdx  = null;
       this.dragOverIdx = null;
+    },
+
+    // Returns the index range [start, end] (inclusive) of a group header + its sub-topics.
+    _groupBlock(groupIdx) {
+      const groupId = this.topics[groupIdx].id;
+      let end = groupIdx;
+      for (let i = groupIdx + 1; i < this.topics.length; i++) {
+        if (this.topics[i].parentId === groupId) end = i;
+        else break;
+      }
+      return { start: groupIdx, end };
+    },
+
+    moveGroup(groupId, dir) {
+      const idx = this.topics.findIndex(t => t.id === groupId);
+      if (idx === -1) return;
+      const { start, end } = this._groupBlock(idx);
+      const block = this.topics.splice(start, end - start + 1);
+
+      if (dir < 0) {
+        // Move up: insert before the predecessor unit
+        if (start === 0) { this.topics.splice(0, 0, ...block); return; }
+        const prev = this.topics[start - 1];
+        let insertAt;
+        if (prev.isGroup) {
+          insertAt = start - 1;
+        } else if (prev.parentId) {
+          insertAt = this.topics.findIndex(t => t.id === prev.parentId);
+        } else {
+          insertAt = start - 1;
+        }
+        this.topics.splice(insertAt, 0, ...block);
+      } else {
+        // Move down: insert after the successor unit
+        if (start >= this.topics.length) { this.topics.push(...block); return; }
+        const next = this.topics[start];
+        let insertAfter;
+        if (next.isGroup) {
+          insertAfter = this._groupBlock(start).end;
+        } else if (next.parentId) {
+          insertAfter = start;
+          for (let i = start + 1; i < this.topics.length; i++) {
+            if (this.topics[i].parentId === next.parentId) insertAfter = i;
+            else break;
+          }
+        } else {
+          insertAfter = start;
+        }
+        this.topics.splice(insertAfter + 1, 0, ...block);
+      }
     },
 
     // ── Group / hierarchy helpers ───────────────────────────────────────────
@@ -1958,6 +2119,7 @@ window.StudyApp = {
         numMocks:        this.numMocks,
         srIntervals:     srIntervals.length ? srIntervals : [1,6,16,45,131],
         postMockSameDay: this.settings.postMockSameDay !== false,
+        fixedMockDates: this._buildFixedMockDates(),
         settings: {
           lnTable:                this.settings.lnTable,
           pnTable:                this.settings.pnTable,
@@ -1966,6 +2128,16 @@ window.StudyApp = {
           maxDaysBetweenPractice: this.settings.maxDaysBetweenPractice || 7,
         },
       };
+    },
+
+    _buildFixedMockDates() {
+      const keys = Object.keys(this.mockDateOverrides);
+      if (!keys.length) return null;
+      return keys
+        .map(k => ({ n: Number(k), d: this.mockDateOverrides[k] }))
+        .filter(x => x.d)
+        .sort((a, b) => a.n - b.n)
+        .map(x => new Date(x.d + 'T00:00:00Z'));
     },
 
     // Apply a finished generatePlan result to Vue state.
@@ -1988,6 +2160,7 @@ window.StudyApp = {
       // Auto-expand the overflow panel and the schedule sub-section when the plan doesn't fit.
       this.overflowExpanded     = result.overflow.hasOverflow;
       this.overflowEditSchedule = result.overflow.hasOverflow;
+      this.overflowEditMocks    = false;
       this.expandedDays         = {};
       this.expandedTopicGroups  = {};
       this.initCalMonth();
@@ -1995,6 +2168,7 @@ window.StudyApp = {
     },
 
     doGeneratePlan() {
+      this.mockDateOverrides = {};
       this.loading    = true;
       this.loadingMsg = 'Building your study plan…';
       this.error      = null;
@@ -2004,6 +2178,24 @@ window.StudyApp = {
           this._applyPlanResult(StudyPlanner.generatePlan(this._planConfig()));
           this.activeTab = 'trajectory';
           this.navigate('step4');
+        } catch (e) {
+          this.error = e.message;
+        } finally {
+          this.loading = false;
+          this.$nextTick(() => this.renderChart());
+        }
+      }, 50);
+    },
+
+    applyMockDateOverrides() {
+      this.loading    = true;
+      this.loadingMsg = 'Rescheduling with updated mock dates…';
+      this.error      = null;
+
+      setTimeout(() => {
+        try {
+          this._applyPlanResult(StudyPlanner.generatePlan(this._planConfig()));
+          this.activeTab = 'trajectory';
         } catch (e) {
           this.error = e.message;
         } finally {
@@ -2176,6 +2368,23 @@ window.StudyApp = {
         else if (s.activityType !== 'postMock') { mins += this.settings.sessionDuration; }
       }
       return mins > 0 ? `~${mins} min` : '';
+    },
+
+    fmtMins(mins) {
+      if (mins <= 0) return '0min';
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      if (h === 0) return `${m}min`;
+      return m > 0 ? `${h}h${m}` : `${h}h`;
+    },
+
+    fmtSessionHint(n) {
+      if (n === 0) return 'off';
+      const mins = n * (this.settings.sessionDuration || 20);
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      const timeStr = h > 0 ? (m > 0 ? `${h}h${m}` : `${h}h`) : `${m}m`;
+      return `${n} session${n !== 1 ? 's' : ''} (${timeStr})`;
     },
 
     // ── Export ──────────────────────────────────────────────────────────────
