@@ -128,11 +128,11 @@
    * @param {string}   opts.model
    * @returns {Promise<Array<{title:string, difficulty:string, startingState:string}>>}
    */
-  async function generateTopics({ mode, examName = '', broadTopics = [], granularTopics = [], freeText = '', apiKey, model }) {
+  async function generateTopics({ mode, examName = '', broadTopics = [], granularTopics = [], freeText = '', freeTextInfo: prebuiltInfo = null, apiKey, model }) {
     const prompts = _getPrompts();
 
-    // Parse free text first so topic generation can use the structured result
-    const freeTextInfo = await parseFreeText(freeText, apiKey, model);
+    // Use caller-supplied parsed info if available; otherwise parse raw freeText now.
+    const freeTextInfo = prebuiltInfo || await parseFreeText(freeText, apiKey, model);
 
     let promptPair;
     if (mode === 'examName') {

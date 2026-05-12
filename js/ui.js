@@ -337,8 +337,12 @@ window.StudyApp = {
           <!-- Free text AI notes -->
           <div class="form-group">
             <label>Additional notes for the AI <span style="font-weight:400;color:var(--c-muted)">(optional)</span></label>
+            <div class="form-hint" style="margin-bottom:6px">
+              You can describe your strengths, weak areas, what you've already studied, preferred study hours, and anything else relevant to your plan.
+              <strong>Please review the topic list on the next screen</strong> — AI interpretation is best-effort and may not capture every nuance correctly.
+            </div>
             <textarea v-model="freeText" rows="3"
-              placeholder="e.g. I struggle with Land Law. Limit to 30 topics. I have already studied everything, focus on practice."></textarea>
+              placeholder="e.g. I struggle with derivatives. I find Financial Statement Analysis easy. I've already studied Ethics. Start with 1h/day and cram at the end. Limit to 40 topics."></textarea>
           </div>
 
           <div class="alert alert-warn" v-if="!settings.apiKey && !(selectedPredefinedExam && !freeText.trim())">
@@ -372,6 +376,21 @@ window.StudyApp = {
       <div class="card">
         <div class="card-body">
           <div class="section-title">Review & Confirm Topics</div>
+
+          <!-- Applied-from-notes banner -->
+          <div v-if="freeTextApplied.length" class="free-text-applied-banner">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+              <div>
+                <strong style="font-size:.84rem">✓ Applied from your notes:</strong>
+                <ul style="margin:4px 0 0 16px;padding:0;font-size:.82rem">
+                  <li v-for="line in freeTextApplied" :key="line">{{ line }}</li>
+                </ul>
+              </div>
+              <button class="btn btn-ghost btn-sm" style="flex-shrink:0;font-size:.75rem"
+                      @click="freeTextApplied = []">✕</button>
+            </div>
+          </div>
+
           <div class="section-sub" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
             <span>
               {{ studyTopicCount }} study topic{{ studyTopicCount !== 1 ? 's' : '' }}
@@ -1378,6 +1397,7 @@ window.StudyApp = {
       dragSrcIdx:  null,
       dragOverIdx: null,
       _nextTopicId: 1,
+      freeTextApplied: [],   // summary lines shown at top of step 2
 
       // Step 3
       startDate: today,
@@ -1760,21 +1780,41 @@ window.StudyApp = {
     // Apply structured free-text overrides to this.topics (leaf topics only).
     _applyFreeTextInfo(info) {
       if (!info || !Object.keys(info).length) return;
+
+      // Build id→topic map so sub-topics can look up their parent group title
+      const byId = {};
+      this.topics.forEach(t => { byId[t.id] = t; });
+
       this.topics = this.topics.map(t => {
         if (t.isGroup) return t;
         let { difficulty, startingState } = t;
 
+        const titleLower  = t.title.toLowerCase();
+        const parentLower = t.parentId ? (byId[t.parentId]?.title || '').toLowerCase() : '';
+
+        // A keyword matches if it appears in the topic title OR in its parent group title.
+        // This lets "Financial Statement Analysis" (a group) match all its sub-topics.
+        const matches = kw => {
+          const k = kw.toLowerCase();
+          return titleLower.includes(k) || parentLower.includes(k);
+        };
+
         // Global starting state
         if (info.globalStartingState) startingState = info.globalStartingState;
 
-        // Weak areas → difficulty = hard
-        for (const area of (info.weakAreas || [])) {
-          if (t.title.toLowerCase().includes(area.toLowerCase())) difficulty = 'hard';
+        // Strong areas → easy (applied first so weak can override below)
+        for (const area of (info.strongAreas || [])) {
+          if (matches(area)) difficulty = 'easy';
         }
 
-        // Per-topic overrides (pattern match)
+        // Weak areas → hard
+        for (const area of (info.weakAreas || [])) {
+          if (matches(area)) difficulty = 'hard';
+        }
+
+        // Per-topic overrides — most specific, applied last
         for (const ov of (info.topicOverrides || [])) {
-          if (t.title.toLowerCase().includes((ov.pattern || '').toLowerCase())) {
+          if (matches(ov.pattern || '')) {
             if (ov.difficulty)    difficulty    = ov.difficulty;
             if (ov.startingState) startingState = ov.startingState;
           }
@@ -1784,26 +1824,138 @@ window.StudyApp = {
       });
     },
 
+    // Apply any settings hints extracted from free text (session duration, schedule).
+    _applyFreeTextToSettings(info) {
+      if (!info) return;
+      let changed = false;
+
+      // Session duration — apply first so schedule conversions use the updated value
+      if (info.sessionMinutes && info.sessionMinutes >= 5 && info.sessionMinutes <= 120) {
+        this.settings.sessionDuration = Math.round(info.sessionMinutes / 5) * 5;
+        changed = true;
+      }
+
+      const dur     = this.settings.sessionDuration || 20;
+      const toN     = mins => Math.min(12, Math.max(0, Math.round(mins / dur)));
+      const WDAYS   = ['mon','tue','wed','thu','fri'];
+      const WEND    = ['sat','sun'];
+
+      // Start-of-plan intensity → firstWeek
+      if (info.weekdayMinutesStart != null) {
+        const n = toN(info.weekdayMinutesStart);
+        WDAYS.forEach(d => { this.firstWeek[d] = n; });
+        changed = true;
+      }
+      if (info.weekendMinutesStart != null) {
+        const n = toN(info.weekendMinutesStart);
+        WEND.forEach(d => { this.firstWeek[d] = n; });
+        changed = true;
+      }
+
+      // End-of-plan intensity → lastWeek
+      if (info.weekdayMinutesEnd != null) {
+        const n = toN(info.weekdayMinutesEnd);
+        WDAYS.forEach(d => { this.lastWeek[d] = n; });
+        changed = true;
+      }
+      if (info.weekendMinutesEnd != null) {
+        const n = toN(info.weekendMinutesEnd);
+        WEND.forEach(d => { this.lastWeek[d] = n; });
+        changed = true;
+      }
+
+      // Ensure lastWeek is always >= firstWeek per day (can't ramp down)
+      for (const d of [...WDAYS, ...WEND]) {
+        if (this.lastWeek[d] < this.firstWeek[d]) this.lastWeek[d] = this.firstWeek[d];
+      }
+
+      if (changed) StudyStorage.saveSettings(this.settings);
+
+      // Dates and mock count — applied directly to plan config fields
+      if (info.startDate && /^\d{4}-\d{2}-\d{2}$/.test(info.startDate))
+        this.startDate = info.startDate;
+      if (info.examDate && /^\d{4}-\d{2}-\d{2}$/.test(info.examDate))
+        this.examDate = info.examDate;
+      if (typeof info.numMocks === 'number' && info.numMocks >= 0 && info.numMocks <= 10)
+        this.numMocks = info.numMocks;
+    },
+
+    // Build a human-readable summary of what was extracted & applied.
+    _buildFreeTextSummary(info) {
+      if (!info || !Object.keys(info).length) return [];
+      const lines = [];
+      if ((info.weakAreas || []).length)
+        lines.push(`Difficulty set to hard: ${info.weakAreas.join(', ')}`);
+      if ((info.strongAreas || []).length)
+        lines.push(`Difficulty set to easy: ${info.strongAreas.join(', ')}`);
+      if ((info.topicOverrides || []).length) {
+        info.topicOverrides.forEach(ov => {
+          const parts = [];
+          if (ov.difficulty)    parts.push(`difficulty → ${ov.difficulty}`);
+          if (ov.startingState) parts.push(`state → ${ov.startingState}`);
+          if (parts.length) lines.push(`"${ov.pattern}": ${parts.join(', ')}`);
+        });
+      }
+      if (info.globalStartingState && info.globalStartingState !== 'Not Started')
+        lines.push(`All topics starting state: ${info.globalStartingState}`);
+      if (info.maxTopics)
+        lines.push(`Topic count limited to ${info.maxTopics}`);
+      if (info.sessionMinutes)
+        lines.push(`Session length updated to ${Math.round(info.sessionMinutes / 5) * 5} min`);
+      const dur = Math.round(info.sessionMinutes / 5) * 5 || 20;
+      const fmtM = m => m >= 60
+        ? (m % 60 === 0 ? `${m/60}h` : `${Math.floor(m/60)}h${m%60}`)
+        : `${m}min`;
+      if (info.weekdayMinutesStart != null && info.weekdayMinutesEnd != null) {
+        if (info.weekdayMinutesStart === info.weekdayMinutesEnd)
+          lines.push(`Weekday study: ${fmtM(info.weekdayMinutesStart)}/day`);
+        else
+          lines.push(`Weekday study: ${fmtM(info.weekdayMinutesStart)}/day → ${fmtM(info.weekdayMinutesEnd)}/day near exam`);
+      } else if (info.weekdayMinutesStart != null) {
+        lines.push(`Weekday study start: ${fmtM(info.weekdayMinutesStart)}/day`);
+      } else if (info.weekdayMinutesEnd != null) {
+        lines.push(`Weekday study near exam: ${fmtM(info.weekdayMinutesEnd)}/day`);
+      }
+      if (info.weekendMinutesStart != null && info.weekendMinutesEnd != null) {
+        if (info.weekendMinutesStart === info.weekendMinutesEnd)
+          lines.push(`Weekend study: ${fmtM(info.weekendMinutesStart)}/day`);
+        else
+          lines.push(`Weekend study: ${fmtM(info.weekendMinutesStart)}/day → ${fmtM(info.weekendMinutesEnd)}/day near exam`);
+      } else if (info.weekendMinutesStart != null) {
+        lines.push(`Weekend study start: ${fmtM(info.weekendMinutesStart)}/day`);
+      } else if (info.weekendMinutesEnd != null) {
+        lines.push(`Weekend study near exam: ${fmtM(info.weekendMinutesEnd)}/day`);
+      }
+      if (info.startDate) lines.push(`Start date set to ${info.startDate}`);
+      if (info.examDate)  lines.push(`Exam date set to ${info.examDate}`);
+      if (typeof info.numMocks === 'number') lines.push(`Number of mock exams: ${info.numMocks}`);
+      return lines;
+    },
+
     async doGenerateTopics() {
-      this.loading    = true;
-      this.loadingMsg = 'Asking AI to generate your topic list…';
-      this.error      = null;
+      this.loading        = true;
+      this.loadingMsg     = 'Asking AI to generate your topic list…';
+      this.error          = null;
+      this.freeTextApplied = [];
 
       try {
-        // ── Predefined exam: load topics from JSON, skip AI topic generation ──
+        // ── Step 1: parse free-text notes upfront (single API call, all modes) ──
+        let freeTextInfo = {};
+        if (this.freeText.trim()) {
+          this.loadingMsg = 'Interpreting your notes…';
+          freeTextInfo = await StudyApi.parseFreeText(this.freeText, this.settings.apiKey, this.settings.model);
+          // Apply settings hints (session duration, schedule) immediately
+          this._applyFreeTextToSettings(freeTextInfo);
+        }
+
+        // ── Step 2: build/load topic list ────────────────────────────────────
+        this.loadingMsg = 'Building your topic list…';
+
         if (this.selectedPredefinedExam && this.topicInputMode === 'examName') {
+          // Predefined exam: load from JSON, no AI topic-generation call needed
           this.loadingMsg = `Loading ${this.selectedPredefinedExam.name}…`;
           const examData = await StudyExams.loadExam(this.selectedPredefinedExam.id);
-
           const flat = StudyApi.flattenHierarchical(examData.topics || []);
-
-          // Apply freeText adjustments locally if any (no AI call for predefined exams)
-          let freeTextInfo = {};
-          if (this.freeText.trim()) {
-            this.loadingMsg = 'Applying your notes…';
-            freeTextInfo = await StudyApi.parseFreeText(this.freeText, this.settings.apiKey, this.settings.model);
-          }
-
           const titleToId = {};
           this.topics = flat.map(t => {
             const id = this._nextTopicId++;
@@ -1818,27 +1970,21 @@ window.StudyApp = {
             };
           });
 
-          // Apply free text adjustments to leaf topics
-          this._applyFreeTextInfo(freeTextInfo);
-          this.navigate('step2');
-          return;
-        }
-
-        if (this.topicInputMode === 'granularList') {
-          // Parse user input into hierarchy first, then send only leaf titles to AI
-          const parsed = parseHierarchyInput(this.granularTopicsText);
+        } else if (this.topicInputMode === 'granularList') {
+          // Mode 3: user provided full list; AI assigns difficulty only
+          const parsed    = parseHierarchyInput(this.granularTopicsText);
           const leafItems = parsed.filter(t => !t.isGroup);
 
           const raw = await StudyApi.generateTopics({
-            mode:            'granularList',
-            granularTopics:  leafItems.map(t => t.title),
-            examName:        this.examName,
-            freeText:        this.freeText,
-            apiKey:          this.settings.apiKey,
-            model:           this.settings.model,
+            mode:           'granularList',
+            granularTopics: leafItems.map(t => t.title),
+            examName:       this.examName,
+            freeTextInfo,                    // pass already-parsed info (no double-call)
+            apiKey:         this.settings.apiKey,
+            model:          this.settings.model,
           });
 
-          // Merge difficulty/startingState from AI response back into parsed hierarchy
+          // Merge AI difficulty/state back into the parsed hierarchy (preserves groups)
           let leafIdx = 0;
           const tempIdToNewId = {};
           const allTopics = parsed.map(t => {
@@ -1850,30 +1996,26 @@ window.StudyApp = {
             const ai = raw[leafIdx++] || {};
             return { id, title: t.title, isGroup: false, difficulty: ai.difficulty || 'medium', startingState: ai.startingState || 'Not Started', _tempId: t._tempId, _parentTempId: t._parentTempId };
           });
-
-          // Resolve _parentTempId → parentId and strip temp fields
           this.topics = allTopics.map(({ _tempId, _parentTempId, ...t }) => ({
             ...t,
             parentId: _parentTempId ? (tempIdToNewId[_parentTempId] || null) : null,
           }));
 
         } else {
-          // Modes 1 & 2: API returns flat array with isGroup/parentTitle
+          // Modes 1 & 2: AI generates the full hierarchy
           const broadTopics = this.topicInputMode === 'broadList'
             ? this.broadTopicsText.split('\n').map(s => s.trim()).filter(Boolean)
             : [];
 
           const flat = await StudyApi.generateTopics({
-            mode:       this.topicInputMode,
-            examName:   this.examName,
+            mode:        this.topicInputMode,
+            examName:    this.examName,
             broadTopics,
-            freeText:   this.freeText,
-            apiKey:     this.settings.apiKey,
-            model:      this.settings.model,
+            freeTextInfo,                    // pass already-parsed info (no double-call)
+            apiKey:      this.settings.apiKey,
+            model:       this.settings.model,
           });
 
-          // flat = [{ title, isGroup, parentTitle, difficulty, startingState }]
-          // Assign IDs and resolve parentTitle → parentId
           const titleToId = {};
           const withIds = flat.map(t => {
             const id = this._nextTopicId++;
@@ -1885,6 +2027,14 @@ window.StudyApp = {
             parentId: parentTitle ? (titleToId[parentTitle] || null) : null,
           }));
         }
+
+        // ── Step 3: deterministic post-pass — always applied for every mode ──
+        // This enforces weak/strong/override rules reliably regardless of whether
+        // the AI prompt hints were followed, acting as a guaranteed second layer.
+        this._applyFreeTextInfo(freeTextInfo);
+
+        // Build the summary shown at the top of step 2
+        this.freeTextApplied = this._buildFreeTextSummary(freeTextInfo);
 
         this.navigate('step2');
       } catch (e) {

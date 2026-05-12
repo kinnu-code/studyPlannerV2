@@ -70,26 +70,135 @@ Avoid super-broad leaves (e.g., "Contract Law" as a sub-topic) and trivially nar
 
   const FREE_TEXT_SCHEMA = `
 Return ONLY a valid JSON object — no markdown fences, no commentary.
-Fields (all optional; omit fields where the text gives no relevant information):
-  "maxTopics"         : number  — if the user wants to cap the topic count
-  "globalStartingState": "Not Started" | "Learned" | "Practicing" | "Reviewing"
-                        — if the user says they have already studied everything
-  "topicOverrides"    : array of {
-                          "pattern"      : string  — topic title or keyword to match
-                          "difficulty"   : "easy" | "medium" | "hard"   (optional)
-                          "startingState": "Not Started"|"Learned"|"Practicing"|"Reviewing" (optional)
-                        }
-  "focusAreas"        : string[]  — topics or areas the user wants extra emphasis on
-  "weakAreas"         : string[]  — topics the user says they struggle with (bump to hard)
-  "otherNotes"        : string    — anything else relevant to planning
+Extract EVERY piece of planning-relevant information. Include only fields where the text gives clear information.
+
+Fields:
+  "maxTopics"              : number   — user wants to cap the total topic count
+  "globalStartingState"    : "Not Started"|"Learned"|"Practicing"|"Reviewing"
+                             — if the user says they have already studied/practiced everything
+  "weakAreas"              : string[] — topics the user struggles with, finds hard, or is bad at
+                             → these will have difficulty set to "hard"
+  "strongAreas"            : string[] — topics the user is confident in, has mastered, or finds easy
+                             → these will have difficulty set to "easy"
+  "topicOverrides"         : array of {
+                               "pattern"      : string  — topic title or keyword to match (partial OK)
+                               "difficulty"   : "easy"|"medium"|"hard"   (optional)
+                               "startingState": "Not Started"|"Learned"|"Practicing"|"Reviewing" (optional)
+                             }
+  "sessionMinutes"         : number — preferred study session length in minutes
+  "weekdayMinutesStart"    : number — daily study minutes on weekdays at the START of the plan
+  "weekdayMinutesEnd"      : number — daily study minutes on weekdays near the EXAM (cram period)
+  "weekendMinutesStart"    : number — daily study minutes on weekends at the START
+  "weekendMinutesEnd"      : number — daily study minutes on weekends near the EXAM
+  "startDate"              : string — when the user plans to start studying (ISO format YYYY-MM-DD)
+  "examDate"               : string — the user's exam date (ISO format YYYY-MM-DD)
+  "numMocks"               : number — how many mock exams the user wants
+  "otherNotes"             : string — anything else relevant
+
+IMPORTANT schedule rules:
+  — If the user gives a SINGLE intensity for the whole plan (no ramp), set BOTH the Start and End
+    fields to the same value (e.g. "I do 1 hour a day" → weekdayMinutesStart:60 AND weekdayMinutesEnd:60).
+  — If the user implies a ramp (different start vs. end), set the Start and End fields differently.
+  — Convert hours to minutes (1h = 60, 1.5h = 90, etc.).
+  — If the user mentions sessions instead of minutes and sessionMinutes is also given, multiply.
+    If sessionMinutes is not given, use 20 as a default.
+  — Vague intensity words map to approximate minutes:
+      "light / easy start"         → ~30 min/day
+      "moderate"                   → ~60 min/day
+      "heavy / intensive"          → ~120 min/day
+      "cram / maximum"             → ~180 min/day
+
+IMPORTANT — TYPOS AND INFORMAL LANGUAGE:
+  Users often misspell subject names or use shorthand. Always normalise to the standard
+  subject/topic name when extracting (e.g. "derivates" → "Derivatives",
+  "fin statement" → "Financial Statement Analysis", "corp fin" → "Corporate Finance").
+
+Interpret these signals broadly. Many phrasings mean the same thing — here are examples:
+
+WEAKNESS signals → weakAreas (difficulty = hard):
+  "I struggle with Derivatives"
+  "Derivatives is really hard for me"
+  "I'm bad at Derivatives / terrible at Derivatives"
+  "I find Derivatives very confusing / I can never get Derivatives right"
+  "Derivatives trips me up / Derivatives is my weak spot"
+  "I always lose marks on Derivatives"
+  "I can't wrap my head around Derivatives"
+  "Derivatives is where I always go wrong"
+  "I have trouble with Derivatives"
+  "struggle with derivates"  ← note: normalise typo → "Derivatives"
+  All of the above → weakAreas: ["Derivatives"]
+
+STRENGTH signals → strongAreas (difficulty = easy):
+  "I'm good at Financial Statement Analysis"
+  "I've mastered Financial Statement Analysis"
+  "Financial Statement Analysis is easy for me / I find it straightforward"
+  "I'm really confident in Financial Statement Analysis"
+  "I know Financial Statement Analysis well / I'm comfortable with it"
+  "Financial Statement Analysis is my strong suit"
+  "I've done a lot of Financial Statement Analysis already"
+  All of the above → strongAreas: ["Financial Statement Analysis"]
+
+COMBINED patterns (very common — extract BOTH):
+  "I'm really good at Financial Statement Analysis but struggle with Derivatives"
+      → strongAreas: ["Financial Statement Analysis"], weakAreas: ["Derivatives"]
+  "Ethics is easy for me but Fixed Income and Derivatives are hard"
+      → strongAreas: ["Ethics"], weakAreas: ["Fixed Income", "Derivatives"]
+  "I know Equity well, but Alternative Investments and Portfolio Management are weak"
+      → strongAreas: ["Equity"], weakAreas: ["Alternative Investments", "Portfolio Management"]
+
+PROGRESS signals → topicOverrides:
+  "I've already studied / read / covered Z"
+      → topicOverrides: [{ pattern: "Z", startingState: "Learned" }]
+  "I've finished practicing / done all MCQs for Z"
+      → topicOverrides: [{ pattern: "Z", startingState: "Practicing" }]
+  "I've reviewed / completed Z"
+      → topicOverrides: [{ pattern: "Z", startingState: "Reviewing" }]
+
+SCHEDULE signals:
+  "I study in 45-minute blocks / my sessions are 30 minutes"
+      → sessionMinutes: 45
+  "I want to do 1 hour a day at the beginning and cram at the end"
+      → weekdayMinutesStart: 60, weekdayMinutesEnd: 180
+  "start light and build up to 2 hours a day"
+      → weekdayMinutesStart: 30, weekdayMinutesEnd: 120
+  "I can do 1 hour on weekdays but 3 hours on weekends near the exam"
+      → weekdayMinutesStart: 60, weekdayMinutesEnd: 60,
+         weekendMinutesStart: 60, weekendMinutesEnd: 180
+
+COUNT signals:
+  "keep it to about 30 topics" / "limit to 25 sub-topics"
+      → maxTopics: 30
+
+DATE signals (convert any date format to YYYY-MM-DD; today's year if year is ambiguous):
+  "my exam is on 15 June" / "exam date: June 15" / "sitting the exam on 15/06"
+      → examDate: "YYYY-06-15"
+  "I want to start studying on 1 March" / "starting March 1st"
+      → startDate: "YYYY-03-01"
+  "I'm starting next Monday" → infer approximate date from today if possible, else omit
+
+MOCK signals:
+  "I want 4 mock exams" / "do 4 mocks" / "schedule 4 practice exams"
+      → numMocks: 4
+  "just 2 mocks" / "only one mock" / "no mock exams"
+      → numMocks: 2 / 1 / 0
 
 Example output:
 {
-  "maxTopics": 30,
-  "weakAreas": ["Consideration", "Land Law"],
+  "weakAreas": ["Derivatives", "Fixed Income"],
+  "strongAreas": ["Equity Valuation"],
   "topicOverrides": [
-    { "pattern": "Contract Formation", "startingState": "Learned" }
-  ]
+    { "pattern": "Time Value of Money", "startingState": "Learned" },
+    { "pattern": "Accounting", "difficulty": "hard" }
+  ],
+  "sessionMinutes": 25,
+  "weekdayMinutesStart": 50,
+  "weekdayMinutesEnd": 150,
+  "weekendMinutesStart": 0,
+  "weekendMinutesEnd": 100,
+  "maxTopics": 40,
+  "startDate": "2026-02-01",
+  "examDate": "2026-06-15",
+  "numMocks": 4
 }`.trim();
 
   // ─── Mode 1: Exam name only ─────────────────────────────────────────────────
@@ -106,7 +215,11 @@ Example output:
       : 'Aim for a complete list; typically 20–60 sub-topics across all groups.';
 
     const weakNote = (freeTextInfo.weakAreas || []).length
-      ? `Mark sub-topics in these areas as "hard" unless inherently simple: ${freeTextInfo.weakAreas.join(', ')}.`
+      ? `Mark sub-topics in these areas as "hard": ${freeTextInfo.weakAreas.join(', ')}.`
+      : '';
+
+    const strongNote = (freeTextInfo.strongAreas || []).length
+      ? `Mark sub-topics in these areas as "easy": ${freeTextInfo.strongAreas.join(', ')}.`
       : '';
 
     const stateNote = freeTextInfo.globalStartingState && freeTextInfo.globalStartingState !== 'Not Started'
@@ -127,6 +240,7 @@ ${HIERARCHY_SCHEMA}`,
         `Exam: ${examName}`,
         maxNote,
         weakNote,
+        strongNote,
         stateNote,
         overrideNote,
       ].filter(Boolean).join('\n'),
@@ -151,6 +265,10 @@ ${HIERARCHY_SCHEMA}`,
       ? `Mark sub-topics in these areas as "hard": ${freeTextInfo.weakAreas.join(', ')}.`
       : '';
 
+    const strongNote = (freeTextInfo.strongAreas || []).length
+      ? `Mark sub-topics in these areas as "easy": ${freeTextInfo.strongAreas.join(', ')}.`
+      : '';
+
     const stateNote = freeTextInfo.globalStartingState && freeTextInfo.globalStartingState !== 'Not Started'
       ? `Set startingState to "${freeTextInfo.globalStartingState}" for ALL sub-topics unless a topicOverride says otherwise.`
       : '';
@@ -172,6 +290,7 @@ ${HIERARCHY_SCHEMA}`,
         broadTopics.map((t, i) => `${i + 1}. ${t}`).join('\n'),
         maxNote,
         weakNote,
+        strongNote,
         stateNote,
         overrideNote,
       ].filter(Boolean).join('\n'),
@@ -194,6 +313,10 @@ ${HIERARCHY_SCHEMA}`,
       ? `Mark these topics/areas as "hard": ${freeTextInfo.weakAreas.join(', ')}.`
       : '';
 
+    const strongNote = (freeTextInfo.strongAreas || []).length
+      ? `Mark these topics/areas as "easy": ${freeTextInfo.strongAreas.join(', ')}.`
+      : '';
+
     const stateNote = freeTextInfo.globalStartingState && freeTextInfo.globalStartingState !== 'Not Started'
       ? `Set startingState to "${freeTextInfo.globalStartingState}" for ALL topics unless a topicOverride says otherwise.`
       : '';
@@ -213,6 +336,7 @@ ${TOPIC_SCHEMA}`,
         'Assign difficulty and startingState for each topic, preserving the original title exactly:',
         topics.map((t, i) => `${i + 1}. ${t}`).join('\n'),
         weakNote,
+        strongNote,
         stateNote,
         overrideNote,
       ].filter(Boolean).join('\n'),
