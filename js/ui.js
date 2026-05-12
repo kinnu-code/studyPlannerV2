@@ -2818,7 +2818,13 @@ window.StudyApp = {
 
     formatDate(date) {
       if (!date) return '';
-      const d = date instanceof Date ? date : new Date(date + 'T00:00:00Z');
+      let d;
+      if (date instanceof Date) {
+        d = date;
+      } else {
+        const s = String(date);
+        d = new Date(s.length === 10 ? s + 'T00:00:00Z' : s);
+      }
       return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
     },
 
@@ -2855,6 +2861,22 @@ window.StudyApp = {
         .sort((a, b) => (b.lastSavedAt || '').localeCompare(a.lastSavedAt || ''));
     },
 
+    // Revive serialized Date strings back to Date objects in a loaded planResult.
+    _revivePlanResult(pr) {
+      if (!pr) return pr;
+      const toDate = s => {
+        if (s instanceof Date) return s;
+        if (!s) return s;
+        const str = String(s);
+        return new Date(str.length === 10 ? str + 'T00:00:00Z' : str);
+      };
+      return {
+        ...pr,
+        calendar: (pr.calendar || []).map(d => ({ ...d, date: toDate(d.date) })),
+        mocks:    (pr.mocks    || []).map(m => ({ ...m, date: toDate(m.date) })),
+      };
+    },
+
     doTrackPlan(planId) {
       const saved = StudyStorage.loadPlan(planId);
       if (!saved) { this.error = 'Could not load plan.'; return; }
@@ -2874,9 +2896,9 @@ window.StudyApp = {
       if (data.settingsSrText) this.settingsSrText = data.settingsSrText;
       if (this.topics.length) this._nextTopicId = Math.max(...this.topics.map(t => t.id || 0)) + 1;
 
-      // Restore plan result
+      // Restore plan result — revive date strings → Date objects
       if (saved.planResult) {
-        const pr = saved.planResult;
+        const pr = this._revivePlanResult(saved.planResult);
         this.planResult = pr;
         this.hydratedCalendar = hydrateCalendar(pr.calendar, pr.topics, pr.mocks);
         const planById = {};
