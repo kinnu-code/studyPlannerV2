@@ -44,24 +44,27 @@
 
   // ─── buildCalendar ─────────────────────────────────────────────────────────
 
-  function buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode) {
+  function buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode, blockedDays = []) {
+    const blockedSet = new Set(blockedDays);
     const days       = [];
     const totalDays  = daysBetween(startDate, examDate);
     const totalWeeks = Math.max(2, Math.ceil(totalDays / 7));
 
     let cur = cloneDate(startDate);
     while (cur.getTime() < examDate.getTime()) {
-      const weekIdx = Math.floor(daysBetween(startDate, cur) / 7);
-      const dow     = DOW_KEYS[cur.getUTCDay()];
-      const first   = firstWeek[dow] || 0;
-      const last    = lastWeek[dow]  || 0;
-      const n       = interpolateSessions(first, last, weekIdx, totalWeeks, rampMode);
+      const weekIdx  = Math.floor(daysBetween(startDate, cur) / 7);
+      const dow      = DOW_KEYS[cur.getUTCDay()];
+      const dk       = dateKey(cur);
+      const isBlocked = blockedSet.has(dk);
+      const first    = firstWeek[dow] || 0;
+      const last     = lastWeek[dow]  || 0;
+      const n        = isBlocked ? 0 : interpolateSessions(first, last, weekIdx, totalWeeks, rampMode);
 
       days.push({
         date:          cloneDate(cur),
         totalSessions: n,
         sessions:      [],
-        blockedBy:     null,
+        blockedBy:     isBlocked ? 'user' : null,
       });
       cur = addDays(cur, 1);
     }
@@ -525,6 +528,7 @@
       settings        = {},
       postMockSameDay = true,
       fixedMockDates  = null,
+      blockedDays     = [],
     } = config;
 
     const mergedSettings = {
@@ -537,7 +541,7 @@
     };
 
     // 1. Build the session calendar
-    const calendar    = buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode);
+    const calendar    = buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode, blockedDays);
 
     // 2. Initialise topic states (these are never mutated — each pass gets a fresh copy)
     const topicStates = initTopics(topics, mergedSettings);

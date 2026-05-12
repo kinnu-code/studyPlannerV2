@@ -13,6 +13,8 @@
 
   const LS_KEY_SETTINGS = 'studyPlanner_settings';
   const LS_KEY_PLAN     = 'studyPlanner_currentPlan';
+  const LS_PLANS_INDEX  = 'sp_plans';
+  const LS_PLAN_PREFIX  = 'sp_plan_';
 
   // ─── Settings ───────────────────────────────────────────────────────────────
 
@@ -77,6 +79,54 @@
 
   function clearCurrentPlan() {
     localStorage.removeItem(LS_KEY_PLAN);
+  }
+
+  // ─── Multi-plan storage ─────────────────────────────────────────────────────
+
+  function createPlanId() {
+    return 'plan_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  }
+
+  function listPlans() {
+    try {
+      const raw = localStorage.getItem(LS_PLANS_INDEX);
+      return raw ? JSON.parse(raw) : [];
+    } catch (_) { return []; }
+  }
+
+  function savePlan(id, planData) {
+    try {
+      const now  = new Date().toISOString();
+      const full = { ...planData, id, lastSavedAt: now };
+      localStorage.setItem(LS_PLAN_PREFIX + id, JSON.stringify(full));
+      const index    = listPlans();
+      const existing = index.findIndex(p => p.id === id);
+      const meta = {
+        id,
+        examName:    planData.examName    || '',
+        examDate:    planData.inputs?.examDate || '',
+        createdAt:   planData.createdAt   || now,
+        lastSavedAt: now,
+      };
+      if (existing >= 0) index[existing] = meta;
+      else index.push(meta);
+      localStorage.setItem(LS_PLANS_INDEX, JSON.stringify(index));
+    } catch (_) {}
+  }
+
+  function loadPlan(id) {
+    try {
+      const raw = localStorage.getItem(LS_PLAN_PREFIX + id);
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) { return null; }
+  }
+
+  function deletePlan(id) {
+    try {
+      localStorage.removeItem(LS_PLAN_PREFIX + id);
+      const index = listPlans().filter(p => p.id !== id);
+      localStorage.setItem(LS_PLANS_INDEX, JSON.stringify(index));
+    } catch (_) {}
   }
 
   // ─── JSON export / import ───────────────────────────────────────────────────
@@ -227,7 +277,7 @@
   function activityLabel(type) {
     return {
       learn:    'Learning',
-      practice: 'Practice MCQs',
+      practice: 'Practice',
       review:   'Review',
       mock:     'Mock Exam',
       postMock: 'Post-Mock Revision',
@@ -259,6 +309,11 @@
     loadCurrentPlan,
     saveCurrentPlan,
     clearCurrentPlan,
+    createPlanId,
+    listPlans,
+    savePlan,
+    loadPlan,
+    deletePlan,
     exportJSON,
     importJSON,
     exportDayByDayCsv,

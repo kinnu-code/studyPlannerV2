@@ -256,10 +256,18 @@ window.StudyApp = {
         <h1>Smart Study Planner</h1>
         <p>Generate an optimised, day-by-day study plan with spaced repetition — tailored to your exam and schedule.</p>
         <div class="home-actions">
-          <div class="action-card" @click="navigate('step1')">
+          <div class="action-card" @click="startNewPlan()">
             <div class="action-icon">📚</div>
             <h3>Start New Plan</h3>
             <p>Enter your exam, topics, and schedule to build a fresh plan from scratch.</p>
+          </div>
+          <div class="action-card"
+               :class="{ 'action-card--disabled': savedPlans.length === 0 }"
+               @click="savedPlans.length > 0 && navigate('planList')">
+            <div class="action-icon">📊</div>
+            <h3>Track Progress</h3>
+            <p>Continue an active plan, mark study days, and recalculate.</p>
+            <span v-if="savedPlans.length === 0" style="font-size:.78rem;color:var(--c-muted);margin-top:4px;display:block">No saved plans yet.</span>
           </div>
           <div class="action-card" @click="loadPlanFile()">
             <div class="action-icon">🔄</div>
@@ -267,6 +275,34 @@ window.StudyApp = {
             <p>Load a saved plan JSON file to replan based on your current progress.</p>
           </div>
         </div>
+      </div>
+    </template>
+
+    <!-- ════════════════ PLAN LIST ════════════════ -->
+    <template v-else-if="!loading && screen === 'planList'">
+      <div class="section-title">Your Saved Plans</div>
+      <div class="section-sub">Select a plan to track, or delete plans you no longer need.</div>
+      <div class="card">
+        <div class="card-body">
+          <div v-if="savedPlans.length === 0" style="color:var(--c-muted);padding:12px 0">
+            No saved plans found. Generate a new plan to start tracking.
+          </div>
+          <div v-for="plan in savedPlans" :key="plan.id" class="plan-list-item">
+            <div class="plan-list-info">
+              <strong>{{ plan.examName || 'Unnamed Plan' }}</strong>
+              <span v-if="plan.examDate" class="plan-list-meta">Exam: {{ plan.examDate }}</span>
+              <span class="plan-list-meta">Last saved: {{ plan.lastSavedAt ? plan.lastSavedAt.slice(0,10) : '—' }}</span>
+            </div>
+            <div class="plan-list-actions">
+              <button class="btn btn-primary btn-sm" @click="doTrackPlan(plan.id)">▶ Track</button>
+              <button class="btn btn-ghost btn-sm" @click="doDeletePlan(plan.id)"
+                      style="color:var(--c-error)">🗑 Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="action-bar">
+        <button class="btn btn-secondary" @click="navigate('home')">← Back</button>
       </div>
     </template>
 
@@ -700,6 +736,19 @@ window.StudyApp = {
         <div class="step active"><div class="step-num">4</div><span class="step-label">Your Plan</span></div>
       </div>
 
+      <!-- ── Tracking banner ── -->
+      <div v-if="trackingMode" class="tracking-banner">
+        <div class="tracking-banner-left">
+          <span class="tracking-badge">📊 Tracking</span>
+          <span class="tracking-today">Today: <strong>{{ todayKey }}</strong></span>
+          <span v-if="simulatedToday" class="tracking-simulated" @click="openDebugDialog()" style="cursor:pointer">⚠ Simulated date</span>
+        </div>
+        <div class="tracking-banner-right">
+          <button class="btn btn-secondary btn-sm" @click="navigate('planList')">← Plans</button>
+          <button class="btn btn-primary btn-sm" @click="doRecalculate()">↺ Recalculate from today</button>
+        </div>
+      </div>
+
       <!-- Overflow / tweak panel — always expandable; auto-opens when overflow -->
       <div class="overflow-panel" :class="{ ok: !planResult.overflow.hasOverflow }">
         <div class="overflow-header" @click="overflowExpanded = !overflowExpanded">
@@ -918,14 +967,26 @@ window.StudyApp = {
           {{ studyDaysWithSessions.length }} study days &nbsp;·&nbsp; ~{{ planTotalHours }} h total
         </div>
         <template v-for="day in studyDaysWithSessions" :key="day.dateKey">
-          <div class="day-block">
+          <div class="day-block"
+               :class="{
+                 'day-block--today':   day.dateKey === todayKey,
+                 'day-block--blocked': isBlockedDay(day.dateKey),
+               }">
             <div class="day-header" @click="toggleDay(day.dateKey)" style="cursor:pointer;user-select:none">
               <span class="day-expand-icon">{{ isDayExpanded(day.dateKey) ? '▼' : '▶' }}</span>
               {{ formatDate(day.date) }}
+              <span v-if="day.dateKey === todayKey" class="today-badge">Today</span>
+              <span v-if="isBlockedDay(day.dateKey)" class="blocked-badge">Not studying</span>
               <span class="session-count">
                 {{ day.sessions.length }} session{{ day.sessions.length !== 1 ? 's' : '' }}
                 <span class="day-time-est" v-if="dayEstimatedTime(day.sessions)">· {{ dayEstimatedTime(day.sessions) }}</span>
               </span>
+              <button v-if="trackingMode" class="btn btn-ghost btn-sm day-block-btn"
+                      :class="{ 'day-block-btn--blocked': isBlockedDay(day.dateKey) }"
+                      @click.stop="toggleBlockedDay(day.dateKey)"
+                      :title="isBlockedDay(day.dateKey) ? 'Mark as studied' : 'Mark as not studied'">
+                {{ isBlockedDay(day.dateKey) ? '✓ Unblock' : '✕ Skip day' }}
+              </button>
             </div>
             <template v-if="isDayExpanded(day.dateKey)">
               <template v-for="(block, bi) in mergeSessions(day.sessions)" :key="bi">
@@ -1067,6 +1128,10 @@ window.StudyApp = {
         <div class="session-length-note" style="margin-bottom:10px">
           Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: {{ settings.mockDuration || 90 }} min &nbsp;·&nbsp; Post-mock revision: full day
         </div>
+        <div v-if="trackingMode" class="tracking-cal-hint">
+          Click any day to view sessions or toggle it as a skip day.
+          <button class="btn btn-primary btn-sm" style="margin-left:12px" @click="doRecalculate()">↺ Recalculate from today</button>
+        </div>
 
         <!-- Month navigation -->
         <div class="cal-nav">
@@ -1084,7 +1149,8 @@ window.StudyApp = {
             <div v-if="!cell" class="cal-cell cal-cell--pad"></div>
             <div v-else class="cal-cell"
                  :class="{
-                   'cal-cell--study':    cell.isStudyDay,
+                   'cal-cell--study':    cell.isStudyDay && !isBlockedDay(cell.dateKey),
+                   'cal-cell--blocked':  isBlockedDay(cell.dateKey),
                    'cal-cell--selected': calendarPopover && calendarPopover.dateKey === cell.dateKey,
                    'cal-cell--today':    cell.dateKey === todayKey,
                    'cal-cell--exam':     cell.dateKey === examDate,
@@ -1114,19 +1180,32 @@ window.StudyApp = {
           </span>
         </div>
 
-        <!-- Day detail panel (shown when a study day is selected) -->
+        <!-- Day detail panel (shown when a day is selected) -->
         <div class="cal-detail" v-if="calendarPopover">
           <div class="cal-detail-header">
             <strong>{{ formatDate(calendarPopover.date) }}</strong>
             <span class="cal-detail-meta">
-              {{ calendarPopover.sessions.length }} session{{ calendarPopover.sessions.length !== 1 ? 's' : '' }}
-              <span v-if="dayEstimatedTime(calendarPopover.sessions)">
-                · {{ dayEstimatedTime(calendarPopover.sessions) }}
-              </span>
+              <template v-if="calendarPopover.sessions.length">
+                {{ calendarPopover.sessions.length }} session{{ calendarPopover.sessions.length !== 1 ? 's' : '' }}
+                <span v-if="dayEstimatedTime(calendarPopover.sessions)">
+                  · {{ dayEstimatedTime(calendarPopover.sessions) }}
+                </span>
+              </template>
+              <template v-else>No sessions</template>
             </span>
-            <button class="btn btn-ghost btn-sm" @click="calendarPopover = null" style="margin-left:auto;padding:2px 8px">✕</button>
+            <button v-if="trackingMode"
+                    class="btn btn-sm"
+                    :class="isBlockedDay(calendarPopover.dateKey) ? 'btn-primary' : 'btn-secondary'"
+                    style="margin-left:auto"
+                    @click="toggleBlockedDay(calendarPopover.dateKey)">
+              {{ isBlockedDay(calendarPopover.dateKey) ? '✓ Unblock day' : '✕ Mark as skip day' }}
+            </button>
+            <button v-else class="btn btn-ghost btn-sm" @click="calendarPopover = null" style="margin-left:auto;padding:2px 8px">✕</button>
           </div>
-          <div class="cal-detail-body">
+          <div v-if="isBlockedDay(calendarPopover.dateKey)" class="cal-detail-blocked">
+            This day is marked as a skip day. Recalculate to reschedule its sessions.
+          </div>
+          <div class="cal-detail-body" v-if="calendarPopover.sessions.length">
             <div v-for="(block, bi) in mergeSessions(calendarPopover.sessions)" :key="bi" class="cal-detail-row">
               <span class="activity-pill" :class="pillClass(block.activityType)">{{ activityLabel(block.activityType) }}</span>
               <span class="cal-detail-topic">{{ block.topicTitle || (block.activityType === 'mock' ? 'Mock Exam' : 'Post-Mock Revision') }}</span>
@@ -1383,6 +1462,29 @@ window.StudyApp = {
     </template>
 
   </main>
+
+  <!-- ── Debug date simulator (Ctrl+Shift+D) ── -->
+  <div v-if="debugDialogVisible" class="debug-overlay" @click.self="closeDebugDialog()">
+    <div class="debug-dialog">
+      <h3 style="margin:0 0 12px">🛠 Simulate Date</h3>
+      <p style="font-size:.82rem;color:var(--c-muted);margin-bottom:12px">
+        Override today's date for testing. Affects all "today" computations. Cleared on page refresh.
+      </p>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Simulated today</label>
+        <input type="date" v-model="debugDateInput" style="width:180px" />
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" @click="applyDebugDate()">Apply</button>
+        <button class="btn btn-secondary btn-sm" @click="clearDebugDate()">Clear (use real today)</button>
+        <button class="btn btn-ghost btn-sm" @click="closeDebugDialog()">Close</button>
+      </div>
+      <p v-if="simulatedToday" style="margin-top:10px;font-size:.82rem;color:#b45309">
+        ⚠ Currently simulating: <strong>{{ simulatedToday }}</strong>
+      </p>
+    </div>
+  </div>
+
 </div>`,
 
   // ─── Data ──────────────────────────────────────────────────────────────────
@@ -1466,6 +1568,17 @@ window.StudyApp = {
       loading:    false,
       loadingMsg: '',
       error:      null,
+
+      // Tracking
+      trackingMode:       false,
+      activePlanId:       null,
+      trackedBlockedDays: [],
+      savedPlans:         [],
+
+      // Debug date simulator (Ctrl+Shift+D)
+      simulatedToday:    null,
+      debugDialogVisible: false,
+      debugDateInput:    '',
     };
   },
 
@@ -1592,9 +1705,10 @@ window.StudyApp = {
         step1:    'New Plan — Step 1: Topic Input',
         step2:    'New Plan — Step 2: Review Topics',
         step3:    'New Plan — Step 3: Schedule',
-        step4:    'Your Study Plan',
+        step4:    this.trackingMode ? 'Tracking Plan' : 'Your Study Plan',
         settings: 'Settings',
         update:   'Update Existing Plan',
+        planList: 'Saved Plans',
       }[this.screen] || '';
     },
 
@@ -1669,8 +1783,9 @@ window.StudyApp = {
       return this.planResult.mocks
         .filter(m => m.type === 'mock')
         .map(m => {
-          const d = m.date;
-          const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+          const dateStr = m.date instanceof Date
+            ? m.date.toISOString().slice(0, 10)
+            : (typeof m.date === 'string' ? m.date.slice(0, 10) : '');
           return { mockNumber: m.mockNumber, dateStr };
         })
         .sort((a, b) => a.mockNumber - b.mockNumber);
@@ -1690,7 +1805,7 @@ window.StudyApp = {
     },
 
     todayKey() {
-      return new Date().toISOString().slice(0, 10);
+      return this.simulatedToday || new Date().toISOString().slice(0, 10);
     },
 
     calendarMonthLabel() {
@@ -1777,6 +1892,15 @@ window.StudyApp = {
         this.prevActiveTab = this.activeTab;
         this.settingsSrText = (this.settings.srIntervals || [1,6,16,45,131]).join(', ');
         this.settingsSnapshot = JSON.stringify(this.settings);
+      }
+      if (screen === 'home' || screen === 'step1') {
+        if (screen === 'step1') {
+          this.trackingMode = false;
+          this.activePlanId = null;
+        }
+      }
+      if (screen === 'planList') {
+        this.loadSavedPlans();
       }
       this.screen = screen;
       this.error  = null;
@@ -2327,6 +2451,7 @@ window.StudyApp = {
       this.expandedTopicGroups  = {};
       this.initCalMonth();
       StudyStorage.saveCurrentPlan(this.buildPlanData());
+      this._savePlanToStorage();
     },
 
     doGeneratePlan() {
@@ -2334,6 +2459,8 @@ window.StudyApp = {
       this.loading    = true;
       this.loadingMsg = 'Building your study plan…';
       this.error      = null;
+      // Assign a plan ID if this is a fresh generation (not a recalculation in tracking mode)
+      if (!this.activePlanId) this.activePlanId = StudyStorage.createPlanId();
 
       setTimeout(() => {
         try {
@@ -2417,6 +2544,9 @@ window.StudyApp = {
       if (tab === 'trajectory') {
         this.$nextTick(() => this.renderChart());
       }
+      if (tab === 'daily' && this.trackingMode) {
+        this.$nextTick(() => this.scrollToToday());
+      }
     },
 
     renderChart() {
@@ -2449,6 +2579,25 @@ window.StudyApp = {
         this._chartStateMap = stateMap;
         StudyChart.draw(canvas, null, this.hydratedCalendar, this.planResult.mocks, {}, stateMap);
       }
+
+      // Draw today marker (vertical dashed red line)
+      if (this._chartDateKeys) {
+        const todayIdx = this._chartDateKeys.indexOf(this.todayKey);
+        if (todayIdx >= 0) {
+          const ctx = canvas.getContext('2d');
+          const LABEL_W = 180, CELL_W = 8;
+          const x = LABEL_W + todayIdx * CELL_W + Math.floor(CELL_W / 2);
+          ctx.save();
+          ctx.strokeStyle = 'rgba(239,68,68,0.85)';
+          ctx.lineWidth   = 2;
+          ctx.setLineDash([5, 3]);
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, canvas.height);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
     },
 
     onChartMouseMove(evt) {
@@ -2471,7 +2620,8 @@ window.StudyApp = {
     // ── Calendar view ───────────────────────────────────────────────────────
 
     initCalMonth() {
-      const d = new Date(this.startDate + 'T00:00:00Z');
+      const anchor = this.trackingMode ? this.todayKey : this.startDate;
+      const d = new Date((anchor || this.startDate) + 'T00:00:00Z');
       this.currentCalMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
       this.calendarPopover = null;
     },
@@ -2489,7 +2639,8 @@ window.StudyApp = {
     },
 
     calCellClick(cell) {
-      if (!cell || !cell.sessions.length) { this.calendarPopover = null; return; }
+      if (!cell) { this.calendarPopover = null; return; }
+      if (!this.trackingMode && !cell.sessions.length) { this.calendarPopover = null; return; }
       this.calendarPopover = this.calendarPopover?.dateKey === cell.dateKey ? null : cell;
     },
 
@@ -2686,6 +2837,273 @@ window.StudyApp = {
     mergeSessions(sessions) {
       return StudyStorage.mergeSessions(sessions);
     },
+
+    // ── New Plan helper ─────────────────────────────────────────────────────
+
+    startNewPlan() {
+      this.trackingMode = false;
+      this.activePlanId = null;
+      this.trackedBlockedDays = [];
+      this.navigate('step1');
+    },
+
+    // ── Tracking: plan list ─────────────────────────────────────────────────
+
+    loadSavedPlans() {
+      this.savedPlans = StudyStorage.listPlans()
+        .slice()
+        .sort((a, b) => (b.lastSavedAt || '').localeCompare(a.lastSavedAt || ''));
+    },
+
+    doTrackPlan(planId) {
+      const saved = StudyStorage.loadPlan(planId);
+      if (!saved) { this.error = 'Could not load plan.'; return; }
+
+      // Restore all plan state
+      const data = saved.inputs || {};
+      if (data.topics)        this.topics          = data.topics;
+      if (data.startDate)     this.startDate       = data.startDate;
+      if (data.examDate)      this.examDate        = data.examDate;
+      if (data.firstWeek)     this.firstWeek       = data.firstWeek;
+      if (data.lastWeek)      this.lastWeek        = data.lastWeek;
+      if (data.rampMode)      this.rampMode        = data.rampMode;
+      if (data.numMocks != null) this.numMocks     = data.numMocks;
+      if (data.examNameStr)   this.examName        = data.examNameStr;
+      if (data.topicInputMode) this.topicInputMode = data.topicInputMode;
+      if (data.settings)      Object.assign(this.settings, data.settings);
+      if (data.settingsSrText) this.settingsSrText = data.settingsSrText;
+      if (this.topics.length) this._nextTopicId = Math.max(...this.topics.map(t => t.id || 0)) + 1;
+
+      // Restore plan result
+      if (saved.planResult) {
+        const pr = saved.planResult;
+        this.planResult = pr;
+        this.hydratedCalendar = hydrateCalendar(pr.calendar, pr.topics, pr.mocks);
+        const planById = {};
+        pr.topics.forEach(pt => { planById[pt.id] = pt; });
+        this.chartTopicsData = this.topics.map(t => ({
+          id: t.id, title: t.title, isGroup: t.isGroup || false, parentId: t.parentId || null,
+          totalPN: planById[t.id]?.totalPN || 4,
+          startingState: planById[t.id]?.startingState || t.startingState || 'Not Started',
+        }));
+        this.overflowExpanded = pr.overflow?.hasOverflow || false;
+        this.overflowEditSchedule = false;
+        this.overflowEditMocks    = false;
+        this.expandedDays         = {};
+        this.expandedTopicGroups  = {};
+      }
+
+      // Restore tracking state
+      this.trackedBlockedDays = (saved.tracking?.blockedDays || []).slice();
+      this.trackingMode = true;
+      this.activePlanId = planId;
+
+      // Expand and scroll to today in day-by-day
+      this.expandedDays = { ...this.expandedDays, [this.todayKey]: true };
+
+      this.initCalMonth();
+      this.activeTab = 'calendar';
+      this.navigate('step4');
+      this.$nextTick(() => this.renderChart());
+    },
+
+    doDeletePlan(planId) {
+      if (!confirm('Delete this plan? This cannot be undone.')) return;
+      StudyStorage.deletePlan(planId);
+      this.loadSavedPlans();
+      if (this.activePlanId === planId) {
+        this.trackingMode = false;
+        this.activePlanId = null;
+      }
+    },
+
+    // ── Tracking: blocked days ──────────────────────────────────────────────
+
+    isBlockedDay(dateKey) {
+      return this.trackedBlockedDays.includes(dateKey);
+    },
+
+    toggleBlockedDay(dateKey) {
+      if (this.trackedBlockedDays.includes(dateKey)) {
+        this.trackedBlockedDays = this.trackedBlockedDays.filter(d => d !== dateKey);
+      } else {
+        this.trackedBlockedDays = [...this.trackedBlockedDays, dateKey];
+      }
+      this._savePlanToStorage();
+    },
+
+    // ── Tracking: recalculate ───────────────────────────────────────────────
+
+    doRecalculate() {
+      if (!this.activePlanId) return;
+      const saved = StudyStorage.loadPlan(this.activePlanId);
+      if (!saved) { this.error = 'Could not load plan for recalculation.'; return; }
+
+      this.loading    = true;
+      this.loadingMsg = 'Recalculating plan from today…';
+      this.error      = null;
+
+      setTimeout(() => {
+        try {
+          // Auto-advance topic states based on what the current plan scheduled before today
+          const advancedTopics = this._autoAdvanceTopicStates(saved);
+          this.topics = advancedTopics;
+
+          // Set start date to today
+          this.startDate = this.todayKey;
+
+          // Build plan config with blocked days
+          const srIntervals = this.settingsSrText
+            .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+          const config = {
+            topics: advancedTopics.filter(t => !t.isGroup).map(t => ({
+              id: t.id, name: t.title, difficulty: t.difficulty, startingState: t.startingState,
+            })),
+            startDate:       new Date(this.todayKey + 'T00:00:00Z'),
+            examDate:        new Date(this.examDate  + 'T00:00:00Z'),
+            firstWeek:       this.firstWeek,
+            lastWeek:        this.lastWeek,
+            rampMode:        this.rampMode,
+            numMocks:        this.numMocks,
+            srIntervals:     srIntervals.length ? srIntervals : [1,6,16,45,131],
+            postMockSameDay: this.settings.postMockSameDay !== false,
+            blockedDays:     this.trackedBlockedDays,
+            settings: {
+              lnTable:                this.settings.lnTable,
+              pnTable:                this.settings.pnTable,
+              learningMode:           this.settings.learningMode || 'interleaved',
+              maxNewTopicsPerDay:     this.settings.maxNewTopicsPerDay,
+              maxDaysBetweenPractice: this.settings.maxDaysBetweenPractice || 7,
+            },
+          };
+
+          const result = StudyPlanner.generatePlan(config);
+          this._applyPlanResult(result);
+          this.activeTab = 'trajectory';
+          this.$nextTick(() => {
+            this.renderChart();
+            this.expandedDays = { ...this.expandedDays, [this.todayKey]: true };
+          });
+        } catch (e) {
+          this.error = e.message;
+        } finally {
+          this.loading = false;
+        }
+      }, 50);
+    },
+
+    _autoAdvanceTopicStates(savedPlan) {
+      const today      = this.todayKey;
+      const blockedSet = new Set(this.trackedBlockedDays);
+      const calendar   = savedPlan?.planResult?.calendar || this.hydratedCalendar;
+      const baseTopics = savedPlan?.inputs?.topics || [];
+      const baseById   = {};
+      baseTopics.forEach(t => { baseById[t.id] = t; });
+
+      const learnBefore    = {};
+      const practiceBefore = {};
+
+      for (const day of calendar) {
+        const dk = day.date instanceof Date
+          ? day.date.toISOString().slice(0, 10)
+          : (typeof day.date === 'string' ? day.date.slice(0, 10) : '');
+        if (!dk || dk >= today) continue;
+        if (blockedSet.has(dk)) continue;
+        for (const s of (day.sessions || [])) {
+          if (!s.topicId) continue;
+          if (s.activityType === 'learn')    learnBefore[s.topicId]    = (learnBefore[s.topicId]    || 0) + 1;
+          if (s.activityType === 'practice') practiceBefore[s.topicId] = (practiceBefore[s.topicId] || 0) + 1;
+        }
+      }
+
+      return this.topics.map(t => {
+        if (t.isGroup) return t;
+        const base     = baseById[t.id];
+        const origState = base?.startingState || t.startingState || 'Not Started';
+        const LN = (this.settings.lnTable || {})[t.difficulty] || 2;
+        const PN = (this.settings.pnTable || {})[t.difficulty] || 4;
+
+        let effectiveLN = learnBefore[t.id]    || 0;
+        let effectivePN = practiceBefore[t.id] || 0;
+
+        // Credit for starting state at plan start
+        if (origState === 'Learned'    || origState === 'Practicing' || origState === 'Reviewing') effectiveLN = LN;
+        if (origState === 'Practicing') effectivePN += 1;
+        if (origState === 'Reviewing')  effectivePN  = PN;
+
+        let newState;
+        if      (effectivePN >= PN) newState = 'Reviewing';
+        else if (effectivePN  > 0)  newState = 'Practicing';
+        else if (effectiveLN >= LN) newState = 'Learned';
+        else                        newState = 'Not Started';
+
+        // Never regress below original starting state
+        const ORDER = { 'Not Started': 0, 'Learned': 1, 'Practicing': 2, 'Reviewing': 3 };
+        if ((ORDER[newState] || 0) < (ORDER[origState] || 0)) newState = origState;
+
+        return { ...t, startingState: newState };
+      });
+    },
+
+    // ── Tracking: persistence ───────────────────────────────────────────────
+
+    _savePlanToStorage() {
+      if (!this.activePlanId) return;
+      const existing = StudyStorage.loadPlan(this.activePlanId) || {};
+      const planData = {
+        examName:  this.examName || existing.examName || '',
+        createdAt: existing.createdAt || new Date().toISOString(),
+        inputs: {
+          topicInputMode: this.topicInputMode,
+          topics:         this.topics,
+          startDate:      this.startDate,
+          examDate:       this.examDate,
+          firstWeek:      this.firstWeek,
+          lastWeek:       this.lastWeek,
+          rampMode:       this.rampMode,
+          numMocks:       this.numMocks,
+          settings:       this.settings,
+          settingsSrText: this.settingsSrText,
+          examNameStr:    this.examName,
+        },
+        planResult: this.planResult || existing.planResult,
+        tracking: {
+          blockedDays: this.trackedBlockedDays,
+        },
+      };
+      StudyStorage.savePlan(this.activePlanId, planData);
+      this.loadSavedPlans();
+    },
+
+    // ── Day-by-day scroll to today ──────────────────────────────────────────
+
+    scrollToToday() {
+      const el = document.querySelector('.day-block--today');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    },
+
+    // ── Debug date simulator ────────────────────────────────────────────────
+
+    openDebugDialog() {
+      this.debugDateInput     = this.simulatedToday || this.todayKey;
+      this.debugDialogVisible = true;
+    },
+
+    closeDebugDialog() {
+      this.debugDialogVisible = false;
+    },
+
+    applyDebugDate() {
+      if (this.debugDateInput && /^\d{4}-\d{2}-\d{2}$/.test(this.debugDateInput)) {
+        this.simulatedToday = this.debugDateInput;
+      }
+      this.debugDialogVisible = false;
+    },
+
+    clearDebugDate() {
+      this.simulatedToday = null;
+      this.debugDialogVisible = false;
+    },
   },
 
   // ─── Watchers ──────────────────────────────────────────────────────────────
@@ -2720,5 +3138,21 @@ window.StudyApp = {
     if (saved) {
       try { this.restoreFromPlanData(saved); } catch (_) {}
     }
+
+    // Load saved plans list for home screen
+    this.loadSavedPlans();
+
+    // Ctrl+Shift+D → debug date simulator
+    this._debugKeyHandler = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
+        e.preventDefault();
+        this.openDebugDialog();
+      }
+    };
+    document.addEventListener('keydown', this._debugKeyHandler);
+  },
+
+  beforeUnmount() {
+    if (this._debugKeyHandler) document.removeEventListener('keydown', this._debugKeyHandler);
   },
 };
