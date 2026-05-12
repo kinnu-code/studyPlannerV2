@@ -2920,6 +2920,9 @@ window.StudyApp = {
       this.trackingMode = true;
       this.activePlanId = planId;
 
+      // Auto-advance topic starting states based on what the plan scheduled before today
+      this.topics = this._autoAdvanceTopicStates(saved);
+
       // Expand and scroll to today in day-by-day
       this.expandedDays = { ...this.expandedDays, [this.todayKey]: true };
 
