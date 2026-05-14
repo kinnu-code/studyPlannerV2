@@ -622,67 +622,80 @@ window.StudyApp = {
           </div>
 
           <div class="form-group">
-            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px">
-              <label style="margin-bottom:0">Study time per day</label>
-              <button class="btn btn-ghost btn-sm" style="font-size:.75rem;padding:2px 8px"
-                      @click="scheduleViewMode = scheduleViewMode === 'time' ? 'sessions' : 'time'">
-                {{ scheduleViewMode === 'time' ? '⇄ Switch to sessions view' : '⇄ Switch to time view' }}
-              </button>
-            </div>
-            <div class="form-hint" style="margin-bottom:6px">
-              Schedule ramps from First Week to Last Week.
-              <span v-if="scheduleViewMode === 'time'"> Each ± step = one {{ settings.sessionDuration }}-min session.</span>
-            </div>
-            <div class="session-length-note" v-if="scheduleViewMode === 'time'">
-              Session length: {{ settings.sessionDuration }} min
-            </div>
-            <div class="schedule-grid" :class="{ 'time-mode': scheduleViewMode === 'time' }">
-              <div class="sg-header">Day</div>
-              <div class="sg-header">First week</div>
-              <div class="sg-header">Last week</div>
-              <template v-for="dow in dowLabels" :key="dow.key">
-                <div class="sg-day">{{ dow.label.slice(0,3) }}</div>
-                <div class="sg-cell">
-                  <div v-if="scheduleViewMode === 'time'" class="sg-time-ctrl">
-                    <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 1)" :disabled="firstWeek[dow.key] === 0">−</button>
-                    <span class="sg-time-val">{{ fmtMins(firstWeek[dow.key] * settings.sessionDuration) }}</span>
-                    <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(20, firstWeek[dow.key] + 1)">+</button>
-                  </div>
-                  <span v-if="scheduleViewMode === 'time'" class="sg-sessions-hint">{{ firstWeek[dow.key] > 0 ? firstWeek[dow.key] + (firstWeek[dow.key] !== 1 ? ' sessions' : ' session') : 'off' }}</span>
-                  <input v-if="scheduleViewMode !== 'time'" type="number" min="0" max="20" v-model.number="firstWeek[dow.key]" />
-                  <span v-if="scheduleViewMode !== 'time' && firstWeek[dow.key] > 0" class="sg-time">{{ fmtSessionHint(firstWeek[dow.key]) }}</span>
-                </div>
-                <div class="sg-cell">
-                  <div v-if="scheduleViewMode === 'time'" class="sg-time-ctrl">
-                    <button class="sg-step-btn" @click="lastWeek[dow.key] = Math.max(0, lastWeek[dow.key] - 1)" :disabled="lastWeek[dow.key] === 0">−</button>
-                    <span class="sg-time-val">{{ fmtMins(lastWeek[dow.key] * settings.sessionDuration) }}</span>
-                    <button class="sg-step-btn" @click="lastWeek[dow.key] = Math.min(20, lastWeek[dow.key] + 1)">+</button>
-                  </div>
-                  <span v-if="scheduleViewMode === 'time'" class="sg-sessions-hint">{{ lastWeek[dow.key] > 0 ? lastWeek[dow.key] + (lastWeek[dow.key] !== 1 ? ' sessions' : ' session') : 'off' }}</span>
-                  <input v-if="scheduleViewMode !== 'time'" type="number" min="0" max="20" v-model.number="lastWeek[dow.key]" />
-                  <span v-if="scheduleViewMode !== 'time' && lastWeek[dow.key] > 0" class="sg-time">{{ fmtSessionHint(lastWeek[dow.key]) }}</span>
-                </div>
-              </template>
-            </div>
-          </div>
+            <label>Study schedule</label>
+            <div class="form-hint" style="margin-bottom:10px">Set your base weekly pace below. Each ± step = one {{ settings.sessionDuration }}-min session.</div>
+            <div class="schedule-layout">
 
-          <div class="form-group">
-            <label>Schedule ramp mode</label>
-            <div class="radio-group" style="margin-top:6px">
-              <label class="radio-option">
-                <input type="radio" value="linear" v-model="rampMode" />
-                <div>
-                  <div class="option-label">Increase linearly</div>
-                  <div class="option-desc">Session count scales evenly week by week.</div>
+              <!-- Left: First week table -->
+              <div class="schedule-left">
+                <div class="sched-week-title">Week 1 — base pace</div>
+                <div class="sched-table">
+                  <div class="sched-row sched-header-row">
+                    <span class="sched-day-col">Day</span>
+                    <span class="sched-ctrl-col">Daily study</span>
+                    <span class="sched-hint-col"></span>
+                  </div>
+                  <div v-for="dow in dowLabels" :key="dow.key" class="sched-row">
+                    <span class="sched-day-col">{{ dow.label.slice(0,3) }}</span>
+                    <div class="sched-ctrl-col">
+                      <div class="sg-time-ctrl">
+                        <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 1)" :disabled="firstWeek[dow.key] === 0">−</button>
+                        <span class="sg-time-val">{{ fmtMins(firstWeek[dow.key] * settings.sessionDuration) }}</span>
+                        <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(20, firstWeek[dow.key] + 1)">+</button>
+                      </div>
+                    </div>
+                    <span class="sched-hint-col sg-sessions-hint">{{ firstWeek[dow.key] > 0 ? firstWeek[dow.key] + (firstWeek[dow.key] !== 1 ? ' sessions' : ' session') : 'off' }}</span>
+                  </div>
+                  <div class="sched-row sched-apply-row">
+                    <span class="sched-day-col" style="font-size:.78rem;color:var(--c-muted)">All</span>
+                    <div class="sched-ctrl-col">
+                      <div class="sg-time-ctrl">
+                        <button class="sg-step-btn" @click="adjustAllDays(-1)">−</button>
+                        <span class="sg-time-val" style="font-size:.75rem;color:var(--c-muted)">apply to all</span>
+                        <button class="sg-step-btn" @click="adjustAllDays(1)">+</button>
+                      </div>
+                    </div>
+                    <span class="sched-hint-col"></span>
+                  </div>
                 </div>
-              </label>
-              <label class="radio-option">
-                <input type="radio" value="cram" v-model="rampMode" />
-                <div>
-                  <div class="option-label">Cram at the end</div>
-                  <div class="option-desc">Slow increase at first, then a significant step-up in the final weeks.</div>
+                <div class="sched-total">
+                  Week 1 total: <strong>{{ fmtMins(firstWeekTotalSessions * settings.sessionDuration) }}</strong>
                 </div>
-              </label>
+              </div>
+
+              <!-- Right: Chart + controls -->
+              <div class="schedule-right">
+                <div class="sched-chart-wrap">
+                  <canvas ref="scheduleCanvas" class="sched-chart-canvas"></canvas>
+                </div>
+                <div class="sched-chart-meta" v-if="schedulePreviewData.length">
+                  Total plan: ~<strong>{{ totalScheduleHours }}h</strong>
+                  <span style="color:var(--c-muted);font-size:.78rem"> across {{ schedulePreviewData.length }} week{{ schedulePreviewData.length !== 1 ? 's' : '' }}</span>
+                </div>
+                <div class="sched-chart-meta" v-else style="color:var(--c-muted);font-size:.82rem">
+                  Set study dates to see weekly preview
+                </div>
+                <div class="sched-ramp-row">
+                  <label class="sched-radio-opt">
+                    <input type="radio" value="linear" v-model="rampMode" />
+                    <span>Linear increase</span>
+                  </label>
+                  <label class="sched-radio-opt">
+                    <input type="radio" value="cram" v-model="rampMode" />
+                    <span>Cram at the end</span>
+                  </label>
+                </div>
+                <div class="sched-intensity-row">
+                  <span class="sched-intensity-label">Peak intensity</span>
+                  <div class="sg-time-ctrl">
+                    <button class="sg-step-btn" @click="adjustIntensity(-0.25)" :disabled="intensityMultiplier <= 1">−</button>
+                    <span class="sg-time-val" style="min-width:44px">×{{ intensityMultiplier.toFixed(2) }}</span>
+                    <button class="sg-step-btn" @click="adjustIntensity(0.25)">+</button>
+                  </div>
+                  <span class="sched-intensity-hint">~{{ fmtMins(lastWeekTotalSessions * settings.sessionDuration) }}/week at exam</span>
+                </div>
+              </div>
+
             </div>
           </div>
 
@@ -773,40 +786,38 @@ window.StudyApp = {
               {{ overflowEditSchedule ? '▲ Hide schedule' : '1. Update study schedule' }}
             </button>
             <div v-if="overflowEditSchedule" style="margin-top:12px">
-              <div class="session-length-note" v-if="scheduleViewMode === 'time'" style="margin-bottom:8px">
-                Session length: {{ settings.sessionDuration }} min
-              </div>
-              <div class="schedule-grid" :class="{ 'time-mode': scheduleViewMode === 'time' }">
-                <div class="sg-header">Day</div>
-                <div class="sg-header">First week</div>
-                <div class="sg-header">Last week</div>
-                <template v-for="dow in dowLabels" :key="dow.key">
-                  <div class="sg-day">{{ dow.label.slice(0,3) }}</div>
-                  <div class="sg-cell">
-                    <div v-if="scheduleViewMode === 'time'" class="sg-time-ctrl">
+              <div class="sched-table" style="margin-bottom:10px">
+                <div v-for="dow in dowLabels" :key="dow.key" class="sched-row">
+                  <span class="sched-day-col">{{ dow.label.slice(0,3) }}</span>
+                  <div class="sched-ctrl-col">
+                    <div class="sg-time-ctrl">
                       <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 1)" :disabled="firstWeek[dow.key] === 0">−</button>
-                      <span class="sg-time-val">{{ firstWeek[dow.key] * settings.sessionDuration }} min</span>
+                      <span class="sg-time-val">{{ fmtMins(firstWeek[dow.key] * settings.sessionDuration) }}</span>
                       <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(20, firstWeek[dow.key] + 1)">+</button>
                     </div>
-                    <span v-if="scheduleViewMode === 'time'" class="sg-sessions-hint">
-                      {{ firstWeek[dow.key] > 0 ? firstWeek[dow.key] + (firstWeek[dow.key] === 1 ? ' session' : ' sessions') : 'off' }}
-                    </span>
-                    <input v-if="scheduleViewMode !== 'time'" type="number" min="0" max="20" v-model.number="firstWeek[dow.key]" />
-                    <span v-if="scheduleViewMode !== 'time' && firstWeek[dow.key] > 0" class="sg-time">~{{ firstWeek[dow.key] * settings.sessionDuration }} min</span>
                   </div>
-                  <div class="sg-cell">
-                    <div v-if="scheduleViewMode === 'time'" class="sg-time-ctrl">
-                      <button class="sg-step-btn" @click="lastWeek[dow.key] = Math.max(0, lastWeek[dow.key] - 1)" :disabled="lastWeek[dow.key] === 0">−</button>
-                      <span class="sg-time-val">{{ lastWeek[dow.key] * settings.sessionDuration }} min</span>
-                      <button class="sg-step-btn" @click="lastWeek[dow.key] = Math.min(20, lastWeek[dow.key] + 1)">+</button>
+                  <span class="sched-hint-col sg-sessions-hint">{{ firstWeek[dow.key] > 0 ? firstWeek[dow.key] + (firstWeek[dow.key] !== 1 ? ' sessions' : ' session') : 'off' }}</span>
+                </div>
+                <div class="sched-row sched-apply-row">
+                  <span class="sched-day-col" style="font-size:.78rem;color:var(--c-muted)">All</span>
+                  <div class="sched-ctrl-col">
+                    <div class="sg-time-ctrl">
+                      <button class="sg-step-btn" @click="adjustAllDays(-1)">−</button>
+                      <span class="sg-time-val" style="font-size:.75rem;color:var(--c-muted)">apply to all</span>
+                      <button class="sg-step-btn" @click="adjustAllDays(1)">+</button>
                     </div>
-                    <span v-if="scheduleViewMode === 'time'" class="sg-sessions-hint">
-                      {{ lastWeek[dow.key] > 0 ? lastWeek[dow.key] + (lastWeek[dow.key] === 1 ? ' session' : ' sessions') : 'off' }}
-                    </span>
-                    <input v-if="scheduleViewMode !== 'time'" type="number" min="0" max="20" v-model.number="lastWeek[dow.key]" />
-                    <span v-if="scheduleViewMode !== 'time' && lastWeek[dow.key] > 0" class="sg-time">~{{ lastWeek[dow.key] * settings.sessionDuration }} min</span>
                   </div>
-                </template>
+                  <span class="sched-hint-col"></span>
+                </div>
+              </div>
+              <div class="sched-intensity-row" style="margin-bottom:10px">
+                <span class="sched-intensity-label">Peak intensity</span>
+                <div class="sg-time-ctrl">
+                  <button class="sg-step-btn" @click="adjustIntensity(-0.25)" :disabled="intensityMultiplier <= 1">−</button>
+                  <span class="sg-time-val" style="min-width:44px">×{{ intensityMultiplier.toFixed(2) }}</span>
+                  <button class="sg-step-btn" @click="adjustIntensity(0.25)">+</button>
+                </div>
+                <span class="sched-intensity-hint">~{{ fmtMins(lastWeekTotalSessions * settings.sessionDuration) }}/week at exam</span>
               </div>
             </div>
           </div>
@@ -1503,8 +1514,8 @@ window.StudyApp = {
       startDate: today,
       examDate:  '',
       firstWeek: { mon: 1, tue: 1, wed: 1, thu: 1, fri: 1, sat: 0, sun: 0 },
-      lastWeek:  { mon: 2, tue: 2, wed: 2, thu: 2, fri: 2, sat: 1, sun: 0 },
       rampMode:  'linear',
+      intensityMultiplier: 1.5,
       numMocks:  3,
 
       // Step 2 — group collapse state
@@ -1524,7 +1535,6 @@ window.StudyApp = {
       overflowEditDate: false,
       overflowEditMocks: false,
       mockDateOverrides: {},
-      scheduleViewMode: 'time',
       chartCollapsed:   false,
 
       // Day-by-day collapse state (default: all collapsed)
@@ -1866,6 +1876,51 @@ window.StudyApp = {
 
       return cells;
     },
+
+    lastWeekComputed() {
+      const maxPerDay = Math.min(20, Math.floor(84 * 60 / 7 / (this.settings.sessionDuration || 20)));
+      const out = {};
+      for (const dow of ['mon','tue','wed','thu','fri','sat','sun']) {
+        const base = this.firstWeek[dow] || 0;
+        out[dow] = base === 0 ? 0 : Math.min(maxPerDay, Math.round(base * this.intensityMultiplier));
+      }
+      return out;
+    },
+
+    firstWeekTotalSessions() {
+      return Object.values(this.firstWeek).reduce((s, v) => s + (v || 0), 0);
+    },
+
+    lastWeekTotalSessions() {
+      return Object.values(this.lastWeekComputed).reduce((s, v) => s + (v || 0), 0);
+    },
+
+    schedulePreviewData() {
+      if (!this.startDate || !this.examDate) return [];
+      const start = new Date(this.startDate + 'T00:00:00Z');
+      const exam  = new Date(this.examDate  + 'T00:00:00Z');
+      const totalDays  = Math.max(0, Math.floor((exam - start) / 86400000));
+      if (totalDays < 7) return [];
+      const totalWeeks = Math.max(2, Math.ceil(totalDays / 7));
+      const last = this.lastWeekComputed;
+      const DOW  = ['mon','tue','wed','thu','fri','sat','sun'];
+      const dur  = this.settings.sessionDuration || 20;
+      const data = [];
+      for (let w = 0; w < totalWeeks; w++) {
+        let sessions = 0;
+        for (const d of DOW) {
+          sessions += StudyPlanner.interpolateSessions(
+            this.firstWeek[d] || 0, last[d] || 0, w, totalWeeks, this.rampMode
+          );
+        }
+        data.push({ week: w + 1, hours: sessions * dur / 60 });
+      }
+      return data;
+    },
+
+    totalScheduleHours() {
+      return Math.round(this.schedulePreviewData.reduce((s, d) => s + d.hours, 0));
+    },
   },
 
   // ─── Methods ───────────────────────────────────────────────────────────────
@@ -1974,21 +2029,14 @@ window.StudyApp = {
         changed = true;
       }
 
-      // End-of-plan intensity → lastWeek
+      // End-of-plan intensity → derive intensityMultiplier from weekday end vs start ratio
       if (info.weekdayMinutesEnd != null) {
-        const n = toN(info.weekdayMinutesEnd);
-        WDAYS.forEach(d => { this.lastWeek[d] = n; });
+        const endN   = toN(info.weekdayMinutesEnd);
+        const startN = WDAYS.reduce((s, d) => s + (this.firstWeek[d] || 0), 0) / WDAYS.length;
+        if (startN > 0 && endN > 0) {
+          this.intensityMultiplier = Math.max(1, Math.min(8, parseFloat((endN / startN).toFixed(2))));
+        }
         changed = true;
-      }
-      if (info.weekendMinutesEnd != null) {
-        const n = toN(info.weekendMinutesEnd);
-        WEND.forEach(d => { this.lastWeek[d] = n; });
-        changed = true;
-      }
-
-      // Ensure lastWeek is always >= firstWeek per day (can't ramp down)
-      for (const d of [...WDAYS, ...WEND]) {
-        if (this.lastWeek[d] < this.firstWeek[d]) this.lastWeek[d] = this.firstWeek[d];
       }
 
       if (changed) StudyStorage.saveSettings(this.settings);
@@ -2383,7 +2431,7 @@ window.StudyApp = {
         startDate:       new Date(this.startDate + 'T00:00:00Z'),
         examDate:        new Date(this.examDate   + 'T00:00:00Z'),
         firstWeek:       this.firstWeek,
-        lastWeek:        this.lastWeek,
+        lastWeek:        this.lastWeekComputed,
         rampMode:        this.rampMode,
         numMocks:        this.numMocks,
         srIntervals:     srIntervals.length ? srIntervals : [1,6,16,45,131],
@@ -2496,8 +2544,6 @@ window.StudyApp = {
             for (const key of Object.keys(this.firstWeek)) {
               if (this.firstWeek[key] > 0)
                 this.firstWeek[key] = Math.min(12, Math.max(1, Math.round(this.firstWeek[key] * factor)));
-              if (this.lastWeek[key] > 0)
-                this.lastWeek[key]  = Math.min(36, Math.max(1, Math.round(this.lastWeek[key]  * factor)));
             }
 
             // Second pass with the adjusted schedule.
@@ -2684,6 +2730,80 @@ window.StudyApp = {
       return `${n} session${n !== 1 ? 's' : ''} (${timeStr})`;
     },
 
+    adjustAllDays(delta) {
+      for (const dow of ['mon','tue','wed','thu','fri','sat','sun']) {
+        if (this.firstWeek[dow] > 0) {
+          this.firstWeek[dow] = Math.min(20, Math.max(0, this.firstWeek[dow] + delta));
+        }
+      }
+    },
+
+    adjustIntensity(delta) {
+      const val = Math.round((this.intensityMultiplier + delta) * 100) / 100;
+      this.intensityMultiplier = Math.max(1, Math.min(8, val));
+    },
+
+    drawScheduleChart() {
+      const canvas = this.$refs.scheduleCanvas;
+      if (!canvas) return;
+      const data = this.schedulePreviewData;
+      const dpr  = window.devicePixelRatio || 1;
+      const W    = canvas.clientWidth;
+      const H    = canvas.clientHeight;
+      if (!W || !H) return;
+      canvas.width  = W * dpr;
+      canvas.height = H * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, W, H);
+
+      if (!data.length) {
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '12px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('Set study dates above to see preview', W / 2, H / 2);
+        return;
+      }
+
+      const padL = 36, padR = 8, padT = 10, padB = 24;
+      const cW   = W - padL - padR;
+      const cH   = H - padT - padB;
+      const maxH = Math.max(...data.map(d => d.hours), 1);
+      const yMax = Math.ceil(maxH / 5) * 5 || 5;
+      const n    = data.length;
+
+      const ySteps = 4;
+      for (let i = 0; i <= ySteps; i++) {
+        const y = padT + cH - (i / ySteps) * cH;
+        ctx.strokeStyle = i === 0 ? '#d1d5db' : '#f3f4f6';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + cW, y); ctx.stroke();
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '10px system-ui';
+        ctx.textAlign = 'right';
+        ctx.fillText(Math.round(i * yMax / ySteps) + 'h', padL - 3, y + 3);
+      }
+
+      const slot = cW / n;
+      const barW = Math.max(2, Math.floor(slot * 0.65));
+      ctx.fillStyle = 'rgba(99,102,241,0.75)';
+      data.forEach((d, i) => {
+        const h = (d.hours / yMax) * cH;
+        const x = padL + i * slot + (slot - barW) / 2;
+        ctx.fillRect(x, padT + cH - h, barW, Math.max(1, h));
+      });
+
+      const labelStep = Math.max(1, Math.ceil(n / 8));
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '10px system-ui';
+      ctx.textAlign = 'center';
+      data.forEach((d, i) => {
+        if (i % labelStep === 0 || i === n - 1) {
+          ctx.fillText('W' + d.week, padL + i * slot + slot / 2, H - padB + 12);
+        }
+      });
+    },
+
     // ── Export ──────────────────────────────────────────────────────────────
 
     doExportDailyCsv() {
@@ -2715,7 +2835,8 @@ window.StudyApp = {
         startDate:        this.startDate,
         examDate:         this.examDate,
         firstWeek:        this.firstWeek,
-        lastWeek:         this.lastWeek,
+        lastWeek:         this.lastWeekComputed,
+        intensityMultiplier: this.intensityMultiplier,
         rampMode:         this.rampMode,
         numMocks:         this.numMocks,
         settings:         this.settings,
@@ -2741,7 +2862,14 @@ window.StudyApp = {
       if (data.startDate)     this.startDate     = data.startDate;
       if (data.examDate)      this.examDate      = data.examDate;
       if (data.firstWeek)     this.firstWeek     = data.firstWeek;
-      if (data.lastWeek)      this.lastWeek      = data.lastWeek;
+      if (data.intensityMultiplier != null) {
+        this.intensityMultiplier = data.intensityMultiplier;
+      } else if (data.lastWeek && data.firstWeek) {
+        const wdays = ['mon','tue','wed','thu','fri'];
+        const sumF = wdays.reduce((s, d) => s + (data.firstWeek[d] || 0), 0);
+        const sumL = wdays.reduce((s, d) => s + (data.lastWeek[d]  || 0), 0);
+        if (sumF > 0) this.intensityMultiplier = Math.max(1, parseFloat((sumL / sumF).toFixed(2)));
+      }
       if (data.rampMode)      this.rampMode      = data.rampMode;
       if (data.numMocks)      this.numMocks      = data.numMocks;
       if (data.examName)      this.examName      = data.examName;
@@ -2870,7 +2998,14 @@ window.StudyApp = {
       if (data.startDate)     this.startDate       = data.startDate;
       if (data.examDate)      this.examDate        = data.examDate;
       if (data.firstWeek)     this.firstWeek       = data.firstWeek;
-      if (data.lastWeek)      this.lastWeek        = data.lastWeek;
+      if (data.intensityMultiplier != null) {
+        this.intensityMultiplier = data.intensityMultiplier;
+      } else if (data.lastWeek && data.firstWeek) {
+        const wdays = ['mon','tue','wed','thu','fri'];
+        const sumF = wdays.reduce((s, d) => s + (data.firstWeek[d] || 0), 0);
+        const sumL = wdays.reduce((s, d) => s + (data.lastWeek[d]  || 0), 0);
+        if (sumF > 0) this.intensityMultiplier = Math.max(1, parseFloat((sumL / sumF).toFixed(2)));
+      }
       if (data.rampMode)      this.rampMode        = data.rampMode;
       if (data.numMocks != null) this.numMocks     = data.numMocks;
       if (data.examNameStr)   this.examName        = data.examNameStr;
@@ -2970,7 +3105,7 @@ window.StudyApp = {
             startDate:       new Date(this.todayKey + 'T00:00:00Z'),
             examDate:        new Date(this.examDate  + 'T00:00:00Z'),
             firstWeek:       this.firstWeek,
-            lastWeek:        this.lastWeek,
+            lastWeek:        this.lastWeekComputed,
             rampMode:        this.rampMode,
             numMocks:        this.numMocks,
             srIntervals:     srIntervals.length ? srIntervals : [1,6,16,45,131],
@@ -3067,7 +3202,8 @@ window.StudyApp = {
           startDate:      this.startDate,
           examDate:       this.examDate,
           firstWeek:      this.firstWeek,
-          lastWeek:       this.lastWeek,
+          lastWeek:       this.lastWeekComputed,
+          intensityMultiplier: this.intensityMultiplier,
           rampMode:       this.rampMode,
           numMocks:       this.numMocks,
           settings:       this.settings,
@@ -3126,7 +3262,19 @@ window.StudyApp = {
       if (newScreen === 'step4' && this.activeTab === 'trajectory' && !this.loading) {
         this.$nextTick(() => this.renderChart());
       }
+      if (newScreen === 'step3') {
+        this.$nextTick(() => this.drawScheduleChart());
+      }
     },
+    firstWeek: {
+      deep: true,
+      handler() { this.$nextTick(() => this.drawScheduleChart()); },
+    },
+    intensityMultiplier() { this.$nextTick(() => this.drawScheduleChart()); },
+    rampMode()            { this.$nextTick(() => this.drawScheduleChart()); },
+    startDate()           { this.$nextTick(() => this.drawScheduleChart()); },
+    examDate()            { this.$nextTick(() => this.drawScheduleChart()); },
+    'settings.sessionDuration'() { this.$nextTick(() => this.drawScheduleChart()); },
   },
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
