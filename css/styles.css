@@ -1454,7 +1454,8 @@ input[type=number] { width: auto; min-width: 80px; }
   border-radius: var(--radius);
   background: var(--c-surface);
   overflow: hidden;
-  height: 160px;
+  height: 180px;
+  position: relative;
 }
 
 .sched-chart-canvas {
@@ -1501,4 +1502,19 @@ input[type=number] { width: auto; min-width: 80px; }
 .sched-intensity-hint {
   font-size: .8rem;
   color: var(--c-muted);
+}
+
+.sched-tooltip {
+  position: absolute;
+  transform: translateX(-50%) translateY(-100%);
+  background: rgba(17,24,39,0.88);
+  color: #fff;
+  font-size: .78rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
+  margin-top: -2px;
 }

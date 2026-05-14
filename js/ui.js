@@ -665,8 +665,12 @@ window.StudyApp = {
 
               <!-- Right: Chart + controls -->
               <div class="schedule-right">
-                <div class="sched-chart-wrap">
+                <div class="sched-chart-wrap" @mousemove="onScheduleChartMouseMove" @mouseleave="scheduleTooltip.visible = false">
                   <canvas ref="scheduleCanvas" class="sched-chart-canvas"></canvas>
+                  <div v-if="scheduleTooltip.visible" class="sched-tooltip"
+                       :style="{ left: scheduleTooltip.x + 'px', top: scheduleTooltip.y + 'px' }">
+                    {{ scheduleTooltip.text }}
+                  </div>
                 </div>
                 <div class="sched-chart-meta" v-if="schedulePreviewData.length">
                   Total plan: ~<strong>{{ totalScheduleHours }}h</strong>
@@ -1517,6 +1521,7 @@ window.StudyApp = {
       rampMode:  'linear',
       intensityMultiplier: 1.5,
       numMocks:  3,
+      scheduleTooltip: { visible: false, text: '', x: 0, y: 0 },
 
       // Step 2 — group collapse state
       collapsedGroups: {},
@@ -2762,16 +2767,18 @@ window.StudyApp = {
         ctx.font = '12px system-ui';
         ctx.textAlign = 'center';
         ctx.fillText('Set study dates above to see preview', W / 2, H / 2);
+        this._scheduleBars = [];
         return;
       }
 
-      const padL = 36, padR = 8, padT = 10, padB = 24;
+      const padL = 36, padR = 8, padT = 10, padB = 40;
       const cW   = W - padL - padR;
       const cH   = H - padT - padB;
       const maxH = Math.max(...data.map(d => d.hours), 1);
       const yMax = Math.ceil(maxH / 5) * 5 || 5;
       const n    = data.length;
 
+      // grid lines + y-axis labels
       const ySteps = 4;
       for (let i = 0; i <= ySteps; i++) {
         const y = padT + cH - (i / ySteps) * cH;
@@ -2784,24 +2791,63 @@ window.StudyApp = {
         ctx.fillText(Math.round(i * yMax / ySteps) + 'h', padL - 3, y + 3);
       }
 
+      // bars
       const slot = cW / n;
       const barW = Math.max(2, Math.floor(slot * 0.65));
-      ctx.fillStyle = 'rgba(99,102,241,0.75)';
+      this._scheduleBars = [];
+      const startMs = this.startDate ? new Date(this.startDate + 'T00:00:00Z').getTime() : null;
+
       data.forEach((d, i) => {
-        const h = (d.hours / yMax) * cH;
-        const x = padL + i * slot + (slot - barW) / 2;
-        ctx.fillRect(x, padT + cH - h, barW, Math.max(1, h));
+        const h  = (d.hours / yMax) * cH;
+        const bx = padL + i * slot + (slot - barW) / 2;
+        const by = padT + cH - Math.max(1, h);
+        ctx.fillStyle = 'rgba(99,102,241,0.75)';
+        ctx.fillRect(bx, by, barW, Math.max(1, h));
+        this._scheduleBars.push({
+          colX: padL + i * slot, slot,
+          barX: bx, barW, barY: by, barH: Math.max(1, h),
+          hours: d.hours, week: d.week,
+        });
       });
 
+      // x-axis labels: week number + date
+      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       const labelStep = Math.max(1, Math.ceil(n / 8));
-      ctx.fillStyle = '#9ca3af';
-      ctx.font = '10px system-ui';
-      ctx.textAlign = 'center';
       data.forEach((d, i) => {
-        if (i % labelStep === 0 || i === n - 1) {
-          ctx.fillText('W' + d.week, padL + i * slot + slot / 2, H - padB + 12);
+        if (i % labelStep !== 0 && i !== n - 1) return;
+        const cx = padL + i * slot + slot / 2;
+        // week label
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '10px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText('W' + d.week, cx, H - padB + 13);
+        // date label
+        if (startMs) {
+          const dt = new Date(startMs + (d.week - 1) * 7 * 86400000);
+          const dateStr = dt.getUTCDate() + ' ' + MONTHS[dt.getUTCMonth()];
+          ctx.fillStyle = '#9ca3af';
+          ctx.font = '9px system-ui';
+          ctx.fillText(dateStr, cx, H - padB + 24);
         }
       });
+    },
+
+    onScheduleChartMouseMove(event) {
+      const canvas = this.$refs.scheduleCanvas;
+      if (!canvas || !this._scheduleBars || !this._scheduleBars.length) {
+        this.scheduleTooltip.visible = false;
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const mx   = event.clientX - rect.left;
+      const bar  = this._scheduleBars.find(b => mx >= b.colX && mx < b.colX + b.slot);
+      if (bar) {
+        const ttX = bar.colX + bar.slot / 2;
+        const ttY = bar.barY - 4;
+        this.scheduleTooltip = { visible: true, text: bar.hours.toFixed(1) + 'h', x: ttX, y: ttY };
+      } else {
+        this.scheduleTooltip.visible = false;
+      }
     },
 
     // ── Export ──────────────────────────────────────────────────────────────
