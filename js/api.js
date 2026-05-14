@@ -119,16 +119,15 @@
    * Generate a topic list using one of three input modes.
    *
    * @param {object} opts
-   * @param {'examName'|'broadList'|'granularList'} opts.mode
-   * @param {string}   opts.examName      mode=examName or broadList
-   * @param {string[]} opts.broadTopics   mode=broadList
+   * @param {'examName'|'granularList'} opts.mode
+   * @param {string}   opts.examName       mode=examName
    * @param {string[]} opts.granularTopics mode=granularList
-   * @param {string}   opts.freeText      raw user notes (parsed internally)
+   * @param {string}   opts.freeText       raw user notes (parsed internally)
    * @param {string}   opts.apiKey
    * @param {string}   opts.model
    * @returns {Promise<Array<{title:string, difficulty:string, startingState:string}>>}
    */
-  async function generateTopics({ mode, examName = '', broadTopics = [], granularTopics = [], freeText = '', freeTextInfo: prebuiltInfo = null, apiKey, model }) {
+  async function generateTopics({ mode, examName = '', granularTopics = [], freeText = '', freeTextInfo: prebuiltInfo = null, apiKey, model }) {
     const prompts = _getPrompts();
 
     // Use caller-supplied parsed info if available; otherwise parse raw freeText now.
@@ -137,8 +136,6 @@
     let promptPair;
     if (mode === 'examName') {
       promptPair = prompts.topicsFromExamName(examName, freeTextInfo);
-    } else if (mode === 'broadList') {
-      promptPair = prompts.topicsFromBroadList(examName, broadTopics, freeTextInfo);
     } else if (mode === 'granularList') {
       promptPair = prompts.topicsFromGranularList(granularTopics, examName, freeTextInfo);
     } else {
@@ -160,8 +157,8 @@
       throw new Error('AI response was not a JSON array of topics');
     }
 
-    // Modes 1 & 2: AI returns a hierarchical structure → flatten to { title, isGroup, parentTitle, difficulty, startingState }
-    if (mode === 'examName' || mode === 'broadList') {
+    // Mode 1: AI returns a hierarchical structure → flatten to { title, isGroup, parentTitle, difficulty, startingState }
+    if (mode === 'examName') {
       return flattenHierarchical(parsed);
     }
 

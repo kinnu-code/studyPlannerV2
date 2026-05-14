@@ -329,11 +329,6 @@ window.StudyApp = {
               <h4>AI generates everything</h4>
               <p>Enter the exam name. AI creates a structured hierarchy of subject areas and granular study units.</p>
             </div>
-            <div class="mode-card" :class="{ selected: topicInputMode === 'broadList' }"
-                 @click="topicInputMode = 'broadList'">
-              <h4>You choose the areas</h4>
-              <p>Enter your main subject areas (one per line). AI generates the granular study units under each area for you.</p>
-            </div>
             <div class="mode-card" :class="{ selected: topicInputMode === 'granularList' }"
                  @click="topicInputMode = 'granularList'">
               <h4>Full topic list</h4>
@@ -341,8 +336,8 @@ window.StudyApp = {
             </div>
           </div>
 
-          <!-- Exam name field (mode 1 & 2) -->
-          <div class="form-group" v-if="topicInputMode !== 'granularList'">
+          <!-- Exam name field (mode 1) -->
+          <div class="form-group" v-if="topicInputMode === 'examName'">
             <label>Exam name</label>
             <input type="text" v-model="examName" list="exam-suggestions"
                    placeholder="e.g. CFA Level 1, SQE FLK1…"
@@ -353,13 +348,6 @@ window.StudyApp = {
             <span class="form-hint" v-if="selectedPredefinedExam" style="color:var(--c-success)">
               ✓ Predefined exam — topics load instantly, no AI needed for the topic list.
             </span>
-          </div>
-
-          <!-- Broad topics (mode 2) -->
-          <div class="form-group" v-if="topicInputMode === 'broadList'">
-            <label>Your subject areas (one per line)</label>
-            <textarea v-model="broadTopicsText" rows="5" placeholder="Contract Law&#10;Tort&#10;Land Law"></textarea>
-            <span class="form-hint">AI will generate granular study units under each area. You'll be able to review and edit everything on the next screen.</span>
           </div>
 
           <!-- Granular list (mode 3) -->
@@ -378,7 +366,7 @@ window.StudyApp = {
               <strong>Please review the topic list on the next screen</strong> — AI interpretation is best-effort and may not capture every nuance correctly.
             </div>
             <textarea v-model="freeText" rows="3"
-              placeholder="e.g. I struggle with derivatives. I find Financial Statement Analysis easy. I've already studied Ethics. Start with 1h/day and cram at the end. Limit to 40 topics."></textarea>
+              placeholder="e.g. I struggle with derivatives. I find Financial Statement Analysis easy. I've already studied Ethics. Make sure to cover Fixed Income and Portfolio Management. Start with 1h/day and cram at the end. Limit to 40 topics."></textarea>
           </div>
 
           <div class="alert alert-warn" v-if="!settings.apiKey && !(selectedPredefinedExam && !freeText.trim())">
@@ -1500,7 +1488,6 @@ window.StudyApp = {
       // Step 1
       topicInputMode: 'examName',
       examName: '',
-      broadTopicsText: '',
       granularTopicsText: '',
       freeText: '',
       predefinedExams:        [],   // loaded from data/exams/index.json
@@ -1720,7 +1707,6 @@ window.StudyApp = {
 
     canGenerateTopics() {
       if (this.topicInputMode === 'examName' && !this.examName.trim()) return false;
-      if (this.topicInputMode === 'broadList' && !this.broadTopicsText.trim()) return false;
       if (this.topicInputMode === 'granularList' && !this.granularTopicsText.trim()) return false;
       // Predefined exam with no free text: no API key needed
       if (this.selectedPredefinedExam && this.topicInputMode === 'examName' && !this.freeText.trim()) return true;
@@ -2065,6 +2051,8 @@ window.StudyApp = {
       if (info.startDate) lines.push(`Start date set to ${info.startDate}`);
       if (info.examDate)  lines.push(`Exam date set to ${info.examDate}`);
       if (typeof info.numMocks === 'number') lines.push(`Number of mock exams: ${info.numMocks}`);
+      if ((info.mustIncludeTopics || []).length)
+        lines.push(`Must-include topics: ${info.mustIncludeTopics.join(', ')}`);
       return lines;
     },
 
@@ -2138,15 +2126,10 @@ window.StudyApp = {
           }));
 
         } else {
-          // Modes 1 & 2: AI generates the full hierarchy
-          const broadTopics = this.topicInputMode === 'broadList'
-            ? this.broadTopicsText.split('\n').map(s => s.trim()).filter(Boolean)
-            : [];
-
+          // Mode 1: AI generates the full hierarchy
           const flat = await StudyApi.generateTopics({
             mode:        this.topicInputMode,
             examName:    this.examName,
-            broadTopics,
             freeTextInfo,                    // pass already-parsed info (no double-call)
             apiKey:      this.settings.apiKey,
             model:       this.settings.model,

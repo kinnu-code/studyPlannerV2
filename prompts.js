@@ -93,6 +93,8 @@ Fields:
   "startDate"              : string — when the user plans to start studying (ISO format YYYY-MM-DD)
   "examDate"               : string — the user's exam date (ISO format YYYY-MM-DD)
   "numMocks"               : number — how many mock exams the user wants
+  "mustIncludeTopics"      : string[] — specific topics/areas the user explicitly wants included
+                             (regardless of how the AI structures the syllabus)
   "otherNotes"             : string — anything else relevant
 
 IMPORTANT schedule rules:
@@ -182,6 +184,20 @@ MOCK signals:
   "just 2 mocks" / "only one mock" / "no mock exams"
       → numMocks: 2 / 1 / 0
 
+MUST-INCLUDE signals → mustIncludeTopics (topics the user explicitly wants in the plan):
+  "make sure to cover Composition, HDR, and Preprocessing"
+      → mustIncludeTopics: ["Composition", "HDR", "Preprocessing"]
+  "include a section on Portfolio Review"
+      → mustIncludeTopics: ["Portfolio Review"]
+  "I need topics on color grading and exposure"
+      → mustIncludeTopics: ["Color Grading", "Exposure"]
+  "don't forget Ethics" / "make sure Ethics is in there"
+      → mustIncludeTopics: ["Ethics"]
+  "I want chapters on Fixed Income and Derivatives"
+      → mustIncludeTopics: ["Fixed Income", "Derivatives"]
+  "please add Lighting Ratios to the list"
+      → mustIncludeTopics: ["Lighting Ratios"]
+
 Example output:
 {
   "weakAreas": ["Derivatives", "Fixed Income"],
@@ -230,6 +246,10 @@ Example output:
       ? `Apply these per-topic overrides where titles match:\n${JSON.stringify(freeTextInfo.topicOverrides, null, 2)}`
       : '';
 
+    const mustIncludeNote = (freeTextInfo.mustIncludeTopics || []).length
+      ? `You MUST include the following as topics or sub-topics (do not omit or merge them): ${freeTextInfo.mustIncludeTopics.join(', ')}.`
+      : '';
+
     return {
       system: `You are an expert study planner with deep knowledge of professional and academic exam syllabuses.
 Your job is to produce a well-organised, hierarchical topic list for a given exam.
@@ -239,6 +259,7 @@ ${HIERARCHY_SCHEMA}`,
       user: [
         `Exam: ${examName}`,
         maxNote,
+        mustIncludeNote,
         weakNote,
         strongNote,
         stateNote,
@@ -247,57 +268,7 @@ ${HIERARCHY_SCHEMA}`,
     };
   }
 
-  // ─── Mode 2: User provides top-level areas, AI generates sub-topics ──────────
-
-  /**
-   * The user provided the top-level subject areas.
-   * AI generates granular study units as sub-topics under each.
-   * @param {string}   examName
-   * @param {string[]} broadTopics  e.g. ["Contract Law", "Tort", "Land Law"]
-   * @param {object}   freeTextInfo
-   */
-  function topicsFromBroadList(examName, broadTopics, freeTextInfo = {}) {
-    const maxNote = freeTextInfo.maxTopics
-      ? `Keep the total number of sub-topics to at most ${freeTextInfo.maxTopics}.`
-      : '';
-
-    const weakNote = (freeTextInfo.weakAreas || []).length
-      ? `Mark sub-topics in these areas as "hard": ${freeTextInfo.weakAreas.join(', ')}.`
-      : '';
-
-    const strongNote = (freeTextInfo.strongAreas || []).length
-      ? `Mark sub-topics in these areas as "easy": ${freeTextInfo.strongAreas.join(', ')}.`
-      : '';
-
-    const stateNote = freeTextInfo.globalStartingState && freeTextInfo.globalStartingState !== 'Not Started'
-      ? `Set startingState to "${freeTextInfo.globalStartingState}" for ALL sub-topics unless a topicOverride says otherwise.`
-      : '';
-
-    const overrideNote = (freeTextInfo.topicOverrides || []).length
-      ? `Apply these per-topic overrides where titles match:\n${JSON.stringify(freeTextInfo.topicOverrides, null, 2)}`
-      : '';
-
-    return {
-      system: `You are an expert study planner with deep knowledge of professional and academic exam syllabuses.
-The user has provided their top-level subject areas. Your job is to generate granular study units as sub-topics for each.
-Each broad topic becomes a GROUP in the output, with its study units listed as subTopics.
-Use the exact titles given for the GROUP items; do not rename, merge, or split them.
-${HIERARCHY_SCHEMA}`,
-
-      user: [
-        examName ? `Exam: ${examName}` : '',
-        `For each of the following subject areas, generate granular study units as sub-topics:`,
-        broadTopics.map((t, i) => `${i + 1}. ${t}`).join('\n'),
-        maxNote,
-        weakNote,
-        strongNote,
-        stateNote,
-        overrideNote,
-      ].filter(Boolean).join('\n'),
-    };
-  }
-
-  // ─── Mode 3: Granular topic list ────────────────────────────────────────────
+  // ─── Mode 2: Granular topic list ────────────────────────────────────────────
 
   /**
    * The user provided the full topic list already.
@@ -363,7 +334,6 @@ ${FREE_TEXT_SCHEMA}`,
 
   return {
     topicsFromExamName,
-    topicsFromBroadList,
     topicsFromGranularList,
     parseFreeText,
   };
