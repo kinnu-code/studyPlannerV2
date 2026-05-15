@@ -42,27 +42,77 @@
     return Math.round(first + (last - first) * factor);
   }
 
+  // ─── Session-length helpers ────────────────────────────────────────────────
+
+  function countCalendarMinutes(startDate, examDate, firstWeekMins, lastWeekMins, rampMode, blockedDays = []) {
+    const blockedSet = new Set(blockedDays);
+    const totalDays  = daysBetween(startDate, examDate);
+    const totalWeeks = Math.max(2, Math.ceil(totalDays / 7));
+    let   totalMins  = 0;
+    let   cur = cloneDate(startDate);
+    while (cur.getTime() < examDate.getTime()) {
+      if (!blockedSet.has(dateKey(cur))) {
+        const weekIdx = Math.floor(daysBetween(startDate, cur) / 7);
+        const dow     = DOW_KEYS[cur.getUTCDay()];
+        totalMins += interpolateSessions(firstWeekMins[dow] || 0, lastWeekMins[dow] || 0, weekIdx, totalWeeks, rampMode);
+      }
+      cur = addDays(cur, 1);
+    }
+    return totalMins;
+  }
+
+  function computeTotalWorkUnits(topics, settings) {
+    const { lnTable, pnTable } = settings;
+    let units = 0;
+    for (const t of topics) {
+      units += (lnTable[t.difficulty] || 1) + (pnTable[t.difficulty] || 3);
+    }
+    return units;
+  }
+
+  // Returns session length in minutes, clamped to [minLen, maxLen], floored to integer minutes.
+  function computeOptimalSessionLength(totalMinutes, totalUnits, overheadFactor, minLen, maxLen) {
+    if (totalUnits === 0 || totalMinutes === 0) return maxLen;
+    const raw = totalMinutes / (totalUnits * overheadFactor);
+    return Math.min(maxLen, Math.max(minLen, Math.floor(raw)));
+  }
+
+  function countSessionTypes(calendar) {
+    let learn = 0, practice = 0, review = 0;
+    for (const day of calendar) {
+      for (const s of (day.sessions || [])) {
+        if      (s.activityType === 'learn')    learn++;
+        else if (s.activityType === 'practice') practice++;
+        else if (s.activityType === 'review')   review++;
+      }
+    }
+    return { learn, practice, review, total: learn + practice + review };
+  }
+
   // ─── buildCalendar ─────────────────────────────────────────────────────────
 
-  function buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode, blockedDays = []) {
+  // firstWeekMins / lastWeekMins: minutes per day-of-week.
+  // sessionLength: computed session duration in minutes; sessions/day = floor(mins/T).
+  function buildCalendar(startDate, examDate, firstWeekMins, lastWeekMins, rampMode, sessionLength, blockedDays = []) {
     const blockedSet = new Set(blockedDays);
     const days       = [];
     const totalDays  = daysBetween(startDate, examDate);
     const totalWeeks = Math.max(2, Math.ceil(totalDays / 7));
+    const T          = Math.max(1, sessionLength); // guard against 0
 
     let cur = cloneDate(startDate);
     while (cur.getTime() < examDate.getTime()) {
-      const weekIdx  = Math.floor(daysBetween(startDate, cur) / 7);
-      const dow      = DOW_KEYS[cur.getUTCDay()];
-      const dk       = dateKey(cur);
+      const weekIdx   = Math.floor(daysBetween(startDate, cur) / 7);
+      const dow       = DOW_KEYS[cur.getUTCDay()];
+      const dk        = dateKey(cur);
       const isBlocked = blockedSet.has(dk);
-      const first    = firstWeek[dow] || 0;
-      const last     = lastWeek[dow]  || 0;
-      const n        = isBlocked ? 0 : interpolateSessions(first, last, weekIdx, totalWeeks, rampMode);
+      const dailyMins = isBlocked ? 0 : interpolateSessions(firstWeekMins[dow] || 0, lastWeekMins[dow] || 0, weekIdx, totalWeeks, rampMode);
+      const n         = Math.floor(dailyMins / T);
 
       days.push({
         date:          cloneDate(cur),
         totalSessions: n,
+        dailyMinutes:  dailyMins,
         sessions:      [],
         blockedBy:     isBlocked ? 'user' : null,
       });
@@ -213,30 +263,26 @@
   }
 
   // ─── mockPlacementValid ───────────────────────────────────────────────────
-  // Returns true if all mock dates are STRICTLY AFTER their eligibility dates.
+  // Returns true if the first mock is strictly after its eligibility date.
+  // (Last mock is anchored to exam date, not practice-completion — no check needed for it.)
 
-  function mockPlacementValid(mocks, eligibility, numMocks) {
-    if (numMocks === 0 || mocks.length === 0) return true;
-
+  function mockPlacementValid(mocks, eligibility) {
+    if (!mocks.length) return true;
     const firstMock = mocks.find(m => m.type === 'mock' && m.mockNumber === 1);
-    const lastMock  = mocks.find(m => m.type === 'mock' && m.mockNumber === numMocks);
-
     if (firstMock && eligibility.firstMockEligibleDate) {
-      // Mock must be on a day AFTER all required MCQs are done
       if (firstMock.date.getTime() <= eligibility.firstMockEligibleDate.getTime()) return false;
-    }
-    if (numMocks > 1 && lastMock && eligibility.lastMockEligibleDate) {
-      if (lastMock.date.getTime() <= eligibility.lastMockEligibleDate.getTime()) return false;
     }
     return true;
   }
 
   // ─── placeMocks ────────────────────────────────────────────────────────────
-  // Determines mock dates and blocks those days in the calendar.
-  // Uses STRICTLY-AFTER placement for first and last mocks to prevent blocking
-  // the day on which eligibility is achieved.
+  // Placement rules:
+  //   First mock  — first study day AFTER all topics have ≥1 practice session done.
+  //   Last mock   — study day on or before (examDate − 3 days).
+  //   Middle mocks — evenly distributed between first and last.
+  //   Manual dates (fixedMockDates: { [mockNumber]: Date }) override auto dates for those mocks only.
 
-  function placeMocks(calendar, eligibility, numMocks, postMockSameDay = true, fixedMockDates = null) {
+  function placeMocks(calendar, eligibility, numMocks, postMockSameDay = true, fixedMockDates = null, examDate) {
     if (numMocks === 0) return [];
 
     const studyDays = calendar.filter(d => d.totalSessions > 0);
@@ -249,42 +295,55 @@
       return studyDays.find(d => d.date.getTime() >= targetDate.getTime()) || null;
     }
 
-    // Compute desired dates — either from caller-supplied fixed dates or from eligibility
-    let desiredDates = [];
-
-    if (fixedMockDates && fixedMockDates.length > 0) {
-      for (const fd of fixedMockDates) {
-        const day = firstStudyDayOnOrAfter(fd);
-        if (day) desiredDates.push(day.date);
-      }
-    } else {
-      const { firstMockEligibleDate, lastMockEligibleDate } = eligibility;
-      if (!firstMockEligibleDate) return [];
-
-      const firstMockDay = firstStudyDayAfter(firstMockEligibleDate);
-      if (!firstMockDay) return [];
-
-      const lastElig    = lastMockEligibleDate || firstMockEligibleDate;
-      const lastMockDay = firstStudyDayAfter(lastElig);
-
-      if (numMocks === 1) {
-        desiredDates.push(firstMockDay.date);
-      } else {
-        desiredDates.push(firstMockDay.date);
-
-        const t0 = firstMockDay.date.getTime();
-        const t1 = lastMockDay ? lastMockDay.date.getTime() : firstMockDay.date.getTime();
-
-        const middleCount = numMocks - 2;
-        for (let i = 1; i <= middleCount; i++) {
-          const targetMs = t0 + (t1 - t0) * (i / (middleCount + 1));
-          const nearest  = firstStudyDayOnOrAfter(new Date(targetMs));
-          if (nearest) desiredDates.push(nearest.date);
-        }
-
-        if (lastMockDay) desiredDates.push(lastMockDay.date);
-      }
+    function lastStudyDayOnOrBefore(targetDate) {
+      const candidates = studyDays.filter(d => d.date.getTime() <= targetDate.getTime());
+      return candidates.length ? candidates[candidates.length - 1] : null;
     }
+
+    // Manual overrides: { [mockNumber]: Date } — only those mock numbers are pinned.
+    const manualDates = fixedMockDates || {};
+
+    const { firstMockEligibleDate } = eligibility;
+    if (!firstMockEligibleDate) return [];
+
+    const firstMockDay = firstStudyDayAfter(firstMockEligibleDate);
+    if (!firstMockDay) return [];
+
+    // Last mock anchor: 3 days before exam
+    const lastTarget  = examDate ? new Date(examDate.getTime() - 3 * MS_PER_DAY) : null;
+    const lastMockDay = lastTarget ? lastStudyDayOnOrBefore(lastTarget) : null;
+
+    // Build auto sequence: first, evenly-spaced middles, last
+    let autoDesiredDates = [];
+    if (numMocks === 1) {
+      autoDesiredDates = [firstMockDay.date];
+    } else {
+      const t0 = firstMockDay.date.getTime();
+      const t1 = (lastMockDay && lastMockDay.date.getTime() > t0)
+        ? lastMockDay.date.getTime()
+        : t0;
+
+      autoDesiredDates.push(firstMockDay.date);
+
+      const middleCount = numMocks - 2;
+      for (let i = 1; i <= middleCount; i++) {
+        const targetMs = t0 + (t1 - t0) * (i / (middleCount + 1));
+        const nearest  = firstStudyDayOnOrAfter(new Date(targetMs));
+        if (nearest) autoDesiredDates.push(nearest.date);
+      }
+
+      autoDesiredDates.push(lastMockDay ? lastMockDay.date : firstMockDay.date);
+    }
+
+    // Apply manual overrides for specific mock numbers
+    const desiredDates = autoDesiredDates.map((autoDate, i) => {
+      const mockNum = i + 1;
+      if (manualDates[mockNum]) {
+        const day = firstStudyDayOnOrAfter(manualDates[mockNum]);
+        return day ? day.date : autoDate;
+      }
+      return autoDate;
+    });
 
     // Deduplicate: bump any collision to the next available study day
     const usedKeys = new Set();
@@ -515,13 +574,18 @@
 
   // ─── generatePlan ──────────────────────────────────────────────────────────
 
+  // Constants for the session-length optimiser
+  const OVERHEAD_FACTOR = 1.25;  // estimated review overhead on top of LN+PN
+  const SESSION_MIN     = 10;    // minimum allowed session length (minutes)
+  const SESSION_MAX     = 60;    // maximum allowed session length (minutes)
+
   function generatePlan(config) {
     const {
       topics,
       startDate,
       examDate,
-      firstWeek,
-      lastWeek,
+      firstWeek,            // minutes per day-of-week
+      lastWeek,             // minutes per day-of-week (derived from firstWeek × intensityMultiplier)
       rampMode        = 'linear',
       numMocks        = 3,
       srIntervals     = [1, 6, 16, 45, 131],
@@ -529,19 +593,28 @@
       postMockSameDay = true,
       fixedMockDates  = null,
       blockedDays     = [],
+      forcedSessionLength = null,  // if provided, bypass auto-computation (must be multiple of 5)
     } = config;
 
     const mergedSettings = {
       lnTable:                { easy: 1, medium: 2, hard: 3 },
       pnTable:                { easy: 3, medium: 4, hard: 5 },
       maxNewTopicsPerDay:     4,
-      sessionDurationMin:     20,
       maxDaysBetweenPractice: 7,
       ...settings,
     };
 
-    // 1. Build the session calendar
-    const calendar    = buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode, blockedDays);
+    // 0. Compute optimal session length from available time and workload
+    const totalMinutes   = countCalendarMinutes(startDate, examDate, firstWeek, lastWeek, rampMode, blockedDays);
+    const totalWorkUnits = computeTotalWorkUnits(topics, mergedSettings);
+    const rawT           = totalWorkUnits > 0 ? totalMinutes / (totalWorkUnits * OVERHEAD_FACTOR) : SESSION_MAX;
+    const sessionLength  = forcedSessionLength != null
+      ? Math.min(SESSION_MAX, Math.max(SESSION_MIN, Math.round(forcedSessionLength)))
+      : computeOptimalSessionLength(totalMinutes, totalWorkUnits, OVERHEAD_FACTOR, SESSION_MIN, SESSION_MAX);
+    const sessionLengthInsufficient = !forcedSessionLength && rawT < SESSION_MIN;
+
+    // 1. Build the session calendar (sessions/day = floor(dailyMins / sessionLength))
+    const calendar    = buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode, sessionLength, blockedDays);
 
     // 2. Initialise topic states (these are never mutated — each pass gets a fresh copy)
     const topicStates = initTopics(topics, mergedSettings);
@@ -567,8 +640,8 @@
         day.blockedBy = null;
       }
 
-      // Place mocks based on current eligibility estimate (or fixed dates if provided)
-      mocks = placeMocks(calendar, eligibility, numMocks, postMockSameDay, fixedMockDates);
+      // Place mocks based on current eligibility estimate (manual overrides kept)
+      mocks = placeMocks(calendar, eligibility, numMocks, postMockSameDay, fixedMockDates, examDate);
 
       // Pass 2: full schedule with blocked days
       const pass2 = runPass2(calendar, topicStates, srIntervals, mergedSettings, startDate);
@@ -578,7 +651,7 @@
       const actualEligibility = computeEligibility(calendar, finalStates);
 
       // If mocks are correctly placed after actual eligibility, we're done
-      if (mockPlacementValid(mocks, actualEligibility, numMocks)) break;
+      if (mockPlacementValid(mocks, actualEligibility)) break;
 
       // Otherwise use actual eligibility for the next iteration
       eligibility = actualEligibility;
@@ -594,7 +667,27 @@
     overflow.placedMockCount = placedMockCount;
     if (mockShortfall > 0) overflow.hasOverflow = true;
 
-    return { calendar, topics: finalStates, mocks, overflow };
+    // 7. Annotate with session-length diagnostics
+    overflow.sessionLengthInsufficient = sessionLengthInsufficient;
+    overflow.requiredSessionLength     = totalWorkUnits > 0
+      ? Math.round(rawT * 10) / 10
+      : 0;
+    if (sessionLengthInsufficient) overflow.hasOverflow = true;
+
+    // 8. Session-type counts for overhead-factor calibration
+    const sessionCounts = countSessionTypes(calendar);
+    const actualOverheadFactor = totalWorkUnits > 0
+      ? Math.round((sessionCounts.total / totalWorkUnits) * 100) / 100
+      : OVERHEAD_FACTOR;
+
+    return {
+      calendar,
+      topics:        finalStates,
+      mocks,
+      overflow,
+      sessionLength: Math.round(sessionLength * 10) / 10,
+      sessionStats:  { totalWorkUnits, totalMinutes, sessionCounts, actualOverheadFactor },
+    };
   }
 
   // ─── Public API ────────────────────────────────────────────────────────────
@@ -603,5 +696,11 @@
     buildCalendar,
     initTopics,
     interpolateSessions,
+    computeTotalWorkUnits,
+    countCalendarMinutes,
+    computeOptimalSessionLength,
+    OVERHEAD_FACTOR,
+    SESSION_MIN,
+    SESSION_MAX,
   };
 }));

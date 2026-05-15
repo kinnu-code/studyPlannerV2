@@ -25,12 +25,12 @@ function sessionReason(session, allSessions, topicFinalState) {
   const t = session.topicTitle || '';
   switch (session.activityType) {
     case 'learn':
-      return session.isFirstSession ? `First learning session for ${t}` : `Continuing learning for ${t}`;
+      return session.isFirstSession ? `First learning unit for ${t}` : `Continuing learning for ${t}`;
     case 'practice': {
       const done = (topicFinalState?.mcqSessionsDone || 0) - (session._mcqNum || 0);
       const total = topicFinalState?.totalPN || '?';
       const num = session._mcqNum || '?';
-      return `Practice session ${num} of ${total} for ${t}`;
+      return `Practice unit ${num} of ${total} for ${t}`;
     }
     case 'review':
       return `Spaced review of ${t}`;
@@ -98,13 +98,13 @@ function hydrateCalendar(calendar, planTopics, mocks) {
         mcqCount[s.topicId] = (mcqCount[s.topicId] || 0) + 1;
         const num   = mcqCount[s.topicId];
         const total = stateMap[s.topicId]?.totalPN || '?';
-        reason = `Practice session ${num} of ${total} for ${title}`;
-        return { ...s, topicTitle: title, reason, _mcqNum: num };
+        reason = `Practice unit ${num} of ${total} for ${title}`;
+        return { ...s, topicTitle: title, reason, _mcqNum: num, totalPN: total };
       }
 
       if (s.activityType === 'learn') {
         reason = s.isFirstSession
-          ? `First learning session for ${title}`
+          ? `First learning unit for ${title}`
           : `Continuing learning for ${title}`;
       } else if (s.activityType === 'review') {
         reason = `Spaced review of ${title} (interval ${s.reviewIndex !== undefined ? s.reviewIndex + 1 : '?'})`;
@@ -119,12 +119,38 @@ function hydrateCalendar(calendar, planTopics, mocks) {
 
 // ─── Build topic summaries for the topic-by-topic table ──────────────────────
 
+function mergeSessionsWithRanges(sessions) {
+  if (!sessions.length) return [];
+  const out = [];
+  let cur = { ...sessions[0], count: 1 };
+  for (let i = 1; i < sessions.length; i++) {
+    const s = sessions[i];
+    if (s.topicTitle === cur.topicTitle && s.activityType === cur.activityType) {
+      cur.count++;
+      if (s.activityType === 'practice') cur._lastMcqNum = s._mcqNum;
+    } else {
+      out.push(cur);
+      cur = { ...s, count: 1 };
+    }
+  }
+  out.push(cur);
+  for (const block of out) {
+    if (block.activityType === 'practice' && block.count > 1 && block._mcqNum != null) {
+      const first = block._mcqNum;
+      const last  = block._lastMcqNum ?? (first + block.count - 1);
+      const total = block.totalPN ?? '?';
+      block.reason = `Practice unit ${first}–${last} of ${total} for ${block.topicTitle}`;
+    }
+  }
+  return out;
+}
+
 function buildTopicSummaries(hydratedCalendar, planTopics) {
   const sums = {};
   planTopics.forEach(t => { sums[t.id] = { title: t.name, activities: [] }; });
 
   for (const day of hydratedCalendar) {
-    const merged = StudyStorage.mergeSessions(day.sessions);
+    const merged = mergeSessionsWithRanges(day.sessions);
     for (const block of merged) {
       if (!block.topicId || !sums[block.topicId]) continue;
       sums[block.topicId].activities.push({
@@ -415,6 +441,30 @@ window.StudyApp = {
             </div>
           </div>
 
+          <!-- State legend — shown above the table -->
+          <div class="state-legend" style="margin-bottom:12px">
+            <h4>Starting state guide</h4>
+            <table>
+              <thead><tr><th>State</th><th>Meaning</th><th>Scheduler behaviour</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Not Started</strong></td><td>Topic not yet touched</td><td>Full pipeline: Learn → Practice → Reviews</td></tr>
+                <tr><td><strong>Learned</strong></td><td>Content studied, ready to practice</td><td>Skip learning; begin at Practice units</td></tr>
+                <tr><td><strong>Practicing</strong></td><td>One practice unit done</td><td>Skip learning; 1 practice unit already counted</td></tr>
+                <tr><td><strong>Reviewing</strong></td><td>All practice units done</td><td>Skip learning and practice; begin at first Review</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Top action bar -->
+          <div class="action-bar" style="margin-bottom:12px">
+            <button class="btn btn-secondary" @click="navigate('step1')">← Back</button>
+            <button v-if="planResult" class="btn btn-secondary" @click="navigate('step4')">Return to Plan</button>
+            <button class="btn btn-primary btn-lg" @click="navigate('step3')"
+                    :disabled="topics.length === 0">
+              Confirm Topics →
+            </button>
+          </div>
+
           <div class="section-sub" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
             <span>
               {{ studyTopicCount }} study topic{{ studyTopicCount !== 1 ? 's' : '' }}
@@ -563,20 +613,7 @@ window.StudyApp = {
             <button class="btn btn-secondary btn-sm" @click="addGroup()">+ Add Group</button>
           </div>
 
-          <!-- State legend -->
-          <div class="state-legend">
-            <h4>Starting state guide</h4>
-            <table>
-              <thead><tr><th>State</th><th>Meaning</th><th>Scheduler behaviour</th></tr></thead>
-              <tbody>
-                <tr><td><strong>Not Started</strong></td><td>Topic not yet touched</td><td>Full pipeline: Learn → Practice → Reviews</td></tr>
-                <tr><td><strong>Learned</strong></td><td>Content studied, ready to practice</td><td>Skip learning; begin at Practice sessions</td></tr>
-                <tr><td><strong>Practicing</strong></td><td>One practice session done</td><td>Skip learning; 1 practice session already counted</td></tr>
-                <tr><td><strong>Reviewing</strong></td><td>All practice sessions done</td><td>Skip learning and practice; begin at first Review</td></tr>
-              </tbody>
-            </table>
-          </div>
-
+          <!-- Bottom action bar -->
           <div class="action-bar">
             <button class="btn btn-secondary" @click="navigate('step1')">← Back</button>
             <button v-if="planResult" class="btn btn-secondary" @click="navigate('step4')">Return to Plan</button>
@@ -604,7 +641,7 @@ window.StudyApp = {
       <div class="card">
         <div class="card-body">
           <div class="section-title">Schedule & Settings</div>
-          <div class="section-sub">Define your study dates and how many sessions per day.</div>
+          <div class="section-sub">Define your study dates and how many units per day.</div>
 
           <div class="row">
             <div class="col">
@@ -623,7 +660,7 @@ window.StudyApp = {
 
           <div class="form-group">
             <label>Study schedule</label>
-            <div class="form-hint" style="margin-bottom:10px">Set your base weekly pace below. Each ± step = one {{ settings.sessionDuration }}-min session.</div>
+            <div class="form-hint" style="margin-bottom:10px">Set your base weekly pace. Each ± step = 20 minutes. Unit length defaults to 20 min and can be adjusted in the overflow panel after generating the plan.</div>
             <div class="schedule-layout">
 
               <!-- Left: First week table -->
@@ -639,32 +676,45 @@ window.StudyApp = {
                     <span class="sched-day-col">{{ dow.label.slice(0,3) }}</span>
                     <div class="sched-ctrl-col">
                       <div class="sg-time-ctrl">
-                        <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 1)" :disabled="firstWeek[dow.key] === 0">−</button>
-                        <span class="sg-time-val">{{ fmtMins(firstWeek[dow.key] * settings.sessionDuration) }}</span>
-                        <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(20, firstWeek[dow.key] + 1)">+</button>
+                        <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 20)" :disabled="firstWeek[dow.key] === 0">−</button>
+                        <span class="sg-time-val">{{ fmtMins(firstWeek[dow.key]) }}</span>
+                        <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(720, firstWeek[dow.key] + 20)">+</button>
                       </div>
                     </div>
-                    <span class="sched-hint-col sg-sessions-hint">{{ firstWeek[dow.key] > 0 ? firstWeek[dow.key] + (firstWeek[dow.key] !== 1 ? ' sessions' : ' session') : 'off' }}</span>
+                    <span class="sched-hint-col sg-sessions-hint">
+                      <template v-if="firstWeek[dow.key] > 0">
+                        {{ Math.floor(firstWeek[dow.key] / unitLength) }} units
+                      </template>
+                      <template v-else>off</template>
+                    </span>
                   </div>
                   <div class="sched-row sched-apply-row">
                     <span class="sched-day-col" style="font-size:.78rem;color:var(--c-muted)">All</span>
                     <div class="sched-ctrl-col">
                       <div class="sg-time-ctrl">
-                        <button class="sg-step-btn" @click="adjustAllDays(-1)">−</button>
+                        <button class="sg-step-btn" @click="adjustAllDays(-20)">−</button>
                         <span class="sg-time-val" style="font-size:.75rem;color:var(--c-muted)">apply to all</span>
-                        <button class="sg-step-btn" @click="adjustAllDays(1)">+</button>
+                        <button class="sg-step-btn" @click="adjustAllDays(20)">+</button>
                       </div>
                     </div>
                     <span class="sched-hint-col"></span>
                   </div>
                 </div>
                 <div class="sched-total">
-                  Week 1 total: <strong>{{ fmtMins(firstWeekTotalSessions * settings.sessionDuration) }}</strong>
+                  Week 1 total: <strong>{{ fmtMins(firstWeekTotalMins) }}</strong>
+                </div>
+                <div style="margin-top:8px;font-size:.82rem;color:var(--c-muted)">
+                  Unit length: <strong>{{ unitLength }} min</strong>
+                  <span v-if="computedSessionLengthPreview && computedSessionLengthPreview.insufficient" style="color:var(--c-error);margin-left:6px">
+                    ⚠ Not enough time — overflow likely even at minimum unit length.
+                  </span>
                 </div>
               </div>
 
               <!-- Right: Chart + controls -->
               <div class="schedule-right">
+                <!-- Spacer to align chart top with table rows (matches sched-week-title height) -->
+                <div class="sched-week-title" style="visibility:hidden" aria-hidden="true">Week 1</div>
                 <div class="sched-chart-wrap" @mousemove="onScheduleChartMouseMove" @mouseleave="scheduleTooltip.visible = false">
                   <canvas ref="scheduleCanvas" class="sched-chart-canvas"></canvas>
                   <div v-if="scheduleTooltip.visible" class="sched-tooltip"
@@ -696,7 +746,7 @@ window.StudyApp = {
                     <span class="sg-time-val" style="min-width:44px">×{{ intensityMultiplier.toFixed(2) }}</span>
                     <button class="sg-step-btn" @click="adjustIntensity(0.25)">+</button>
                   </div>
-                  <span class="sched-intensity-hint">~{{ fmtMins(lastWeekTotalSessions * settings.sessionDuration) }}/week at exam</span>
+                  <span class="sched-intensity-hint">~{{ fmtMins(lastWeekTotalMins) }}/week at exam</span>
                 </div>
               </div>
 
@@ -705,10 +755,10 @@ window.StudyApp = {
 
           <div class="form-group">
             <label>Number of mock exams</label>
-            <div class="form-hint" style="margin-bottom:6px">Minimum 3 recommended.</div>
+            <div class="form-hint" style="margin-bottom:6px">Minimum 3 recommended. Set to 0 to skip mock exams entirely.</div>
             <div class="spinner-group">
-              <button @click="numMocks = Math.max(1, numMocks - 1)">−</button>
-              <input type="number" min="1" max="10" v-model.number="numMocks" />
+              <button @click="numMocks = Math.max(0, numMocks - 1)">−</button>
+              <input type="number" min="0" max="10" v-model.number="numMocks" />
               <button @click="numMocks = Math.min(10, numMocks + 1)">+</button>
             </div>
           </div>
@@ -771,64 +821,100 @@ window.StudyApp = {
             {{ overflowSummaryText }}
           </div>
 
-          <!-- Auto-adjust button — shown only when there is topic overflow (not mock-only shortfall) -->
-          <div v-if="planResult.overflow.incompleteLearnTopics.length > 0 || planResult.overflow.incompleteMCQTopics.length > 0"
-               style="margin-bottom:20px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px">
-            <p style="font-size:.88rem;margin-bottom:10px;font-weight:500">
-              Let the planner increase your sessions per day automatically to make everything fit:
-            </p>
-            <button class="btn btn-primary btn-sm" @click="doAdjustSchedule()">⚡ Adjust schedule for me</button>
+          <!-- Quick-fix buttons for actionable overflow -->
+          <div v-if="planResult.overflow.hasOverflow"
+               style="margin-bottom:20px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+              <button class="btn btn-secondary btn-sm" style="min-width:240px" @click="doAdjustSchedule()">⚡ Increase daily study time for me</button>
+              <span style="font-size:.82rem;color:var(--c-muted)">Scales up your daily minutes to fit everything</span>
+            </div>
           </div>
 
-          <p style="font-weight:600;margin-bottom:12px">
-            Or adjust manually:
-          </p>
+          <p style="font-weight:600;margin-bottom:12px">Adjust plan:</p>
 
-          <!-- Option 1: Update study schedule -->
+          <!-- Option 1: Update study schedule (full layout matching step 3) -->
           <div style="margin-bottom:16px">
-            <button class="btn btn-secondary btn-sm" @click="overflowEditSchedule = !overflowEditSchedule">
+            <button class="btn btn-secondary btn-sm" style="min-width:220px;text-align:left" @click="overflowEditSchedule = !overflowEditSchedule">
               {{ overflowEditSchedule ? '▲ Hide schedule' : '1. Update study schedule' }}
             </button>
             <div v-if="overflowEditSchedule" style="margin-top:12px">
-              <div class="sched-table" style="margin-bottom:10px">
-                <div v-for="dow in dowLabels" :key="dow.key" class="sched-row">
-                  <span class="sched-day-col">{{ dow.label.slice(0,3) }}</span>
-                  <div class="sched-ctrl-col">
-                    <div class="sg-time-ctrl">
-                      <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 1)" :disabled="firstWeek[dow.key] === 0">−</button>
-                      <span class="sg-time-val">{{ fmtMins(firstWeek[dow.key] * settings.sessionDuration) }}</span>
-                      <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(20, firstWeek[dow.key] + 1)">+</button>
+              <div class="schedule-layout">
+                <!-- Left: week table -->
+                <div class="schedule-left">
+                  <div class="sched-week-title">Week 1 — base pace</div>
+                  <div class="sched-table">
+                    <div class="sched-row sched-header-row">
+                      <span class="sched-day-col">Day</span>
+                      <span class="sched-ctrl-col">Daily study</span>
+                      <span class="sched-hint-col"></span>
+                    </div>
+                    <div v-for="dow in dowLabels" :key="dow.key" class="sched-row">
+                      <span class="sched-day-col">{{ dow.label.slice(0,3) }}</span>
+                      <div class="sched-ctrl-col">
+                        <div class="sg-time-ctrl">
+                          <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 20)" :disabled="firstWeek[dow.key] === 0">−</button>
+                          <span class="sg-time-val">{{ fmtMins(firstWeek[dow.key]) }}</span>
+                          <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(720, firstWeek[dow.key] + 20)">+</button>
+                        </div>
+                      </div>
+                      <span class="sched-hint-col sg-sessions-hint">{{ firstWeek[dow.key] > 0 ? fmtMins(firstWeek[dow.key]) : 'off' }}</span>
+                    </div>
+                    <div class="sched-row sched-apply-row">
+                      <span class="sched-day-col" style="font-size:.78rem;color:var(--c-muted)">All</span>
+                      <div class="sched-ctrl-col">
+                        <div class="sg-time-ctrl">
+                          <button class="sg-step-btn" @click="adjustAllDays(-20)">−</button>
+                          <span class="sg-time-val" style="font-size:.75rem;color:var(--c-muted)">apply to all</span>
+                          <button class="sg-step-btn" @click="adjustAllDays(20)">+</button>
+                        </div>
+                      </div>
+                      <span class="sched-hint-col"></span>
                     </div>
                   </div>
-                  <span class="sched-hint-col sg-sessions-hint">{{ firstWeek[dow.key] > 0 ? firstWeek[dow.key] + (firstWeek[dow.key] !== 1 ? ' sessions' : ' session') : 'off' }}</span>
+                  <div class="sched-total">Week 1 total: <strong>{{ fmtMins(firstWeekTotalMins) }}</strong></div>
                 </div>
-                <div class="sched-row sched-apply-row">
-                  <span class="sched-day-col" style="font-size:.78rem;color:var(--c-muted)">All</span>
-                  <div class="sched-ctrl-col">
-                    <div class="sg-time-ctrl">
-                      <button class="sg-step-btn" @click="adjustAllDays(-1)">−</button>
-                      <span class="sg-time-val" style="font-size:.75rem;color:var(--c-muted)">apply to all</span>
-                      <button class="sg-step-btn" @click="adjustAllDays(1)">+</button>
+                <!-- Right: chart + ramp controls -->
+                <div class="schedule-right">
+                  <!-- Spacer to align chart top with table rows (matches sched-week-title height) -->
+                  <div class="sched-week-title" style="visibility:hidden" aria-hidden="true">Week 1</div>
+                  <div class="sched-chart-wrap" @mousemove="onScheduleChartMouseMove" @mouseleave="scheduleTooltip.visible = false">
+                    <canvas ref="scheduleCanvas" class="sched-chart-canvas"></canvas>
+                    <div v-if="scheduleTooltip.visible" class="sched-tooltip"
+                         :style="{ left: scheduleTooltip.x + 'px', top: scheduleTooltip.y + 'px' }">
+                      {{ scheduleTooltip.text }}
                     </div>
                   </div>
-                  <span class="sched-hint-col"></span>
+                  <div class="sched-chart-meta" v-if="schedulePreviewData.length">
+                    Total plan: ~<strong>{{ totalScheduleHours }}h</strong>
+                    <span style="color:var(--c-muted);font-size:.78rem"> across {{ schedulePreviewData.length }} week{{ schedulePreviewData.length !== 1 ? 's' : '' }}</span>
+                  </div>
+                  <div class="sched-ramp-row">
+                    <label class="sched-radio-opt">
+                      <input type="radio" value="linear" v-model="rampMode" />
+                      <span>Linear increase</span>
+                    </label>
+                    <label class="sched-radio-opt">
+                      <input type="radio" value="cram" v-model="rampMode" />
+                      <span>Cram at the end</span>
+                    </label>
+                  </div>
+                  <div class="sched-intensity-row">
+                    <span class="sched-intensity-label">Peak intensity</span>
+                    <div class="sg-time-ctrl">
+                      <button class="sg-step-btn" @click="adjustIntensity(-0.25)" :disabled="intensityMultiplier <= 1">−</button>
+                      <span class="sg-time-val" style="min-width:44px">×{{ intensityMultiplier.toFixed(2) }}</span>
+                      <button class="sg-step-btn" @click="adjustIntensity(0.25)">+</button>
+                    </div>
+                    <span class="sched-intensity-hint">~{{ fmtMins(lastWeekTotalMins) }}/week at exam</span>
+                  </div>
                 </div>
-              </div>
-              <div class="sched-intensity-row" style="margin-bottom:10px">
-                <span class="sched-intensity-label">Peak intensity</span>
-                <div class="sg-time-ctrl">
-                  <button class="sg-step-btn" @click="adjustIntensity(-0.25)" :disabled="intensityMultiplier <= 1">−</button>
-                  <span class="sg-time-val" style="min-width:44px">×{{ intensityMultiplier.toFixed(2) }}</span>
-                  <button class="sg-step-btn" @click="adjustIntensity(0.25)">+</button>
-                </div>
-                <span class="sched-intensity-hint">~{{ fmtMins(lastWeekTotalSessions * settings.sessionDuration) }}/week at exam</span>
               </div>
             </div>
           </div>
 
           <!-- Option 2: Update exam date -->
           <div style="margin-bottom:16px">
-            <button class="btn btn-secondary btn-sm" @click="overflowEditDate = !overflowEditDate">
+            <button class="btn btn-secondary btn-sm" style="min-width:220px;text-align:left" @click="overflowEditDate = !overflowEditDate">
               {{ overflowEditDate ? '▲ Hide date' : '2. Update exam date' }}
             </button>
             <div v-if="overflowEditDate" style="margin-top:8px;display:flex;align-items:center;gap:12px">
@@ -841,42 +927,40 @@ window.StudyApp = {
 
           <!-- Option 3: Update topics -->
           <div style="margin-bottom:16px">
-            <button class="btn btn-secondary btn-sm" @click="navigate('step2')">
+            <button class="btn btn-secondary btn-sm" style="min-width:220px;text-align:left" @click="navigate('step2')">
               3. Update topics table
             </button>
           </div>
 
-          <!-- Option 4: Fewer mocks -->
+          <!-- Option 4: Adjust mocks (number + dates grouped) -->
           <div style="margin-bottom:16px">
-            <div style="display:flex;align-items:center;gap:10px">
-              <span style="font-size:.88rem;font-weight:500">4. Number of mock exams:</span>
-              <div class="spinner-group">
-                <button @click="numMocks = Math.max(1, numMocks - 1)">−</button>
-                <input type="number" min="1" max="10" v-model.number="numMocks" style="width:48px" />
-                <button @click="numMocks = Math.min(10, numMocks + 1)">+</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Option 5: Adjust mock dates -->
-          <div v-if="scheduledMocks.length > 0" style="margin-bottom:16px">
-            <button class="btn btn-secondary btn-sm" @click="overflowEditMocks = !overflowEditMocks">
-              {{ overflowEditMocks ? '▲ Hide mock dates' : '5. Adjust mock exam dates' }}
+            <button class="btn btn-secondary btn-sm" style="min-width:220px;text-align:left" @click="overflowEditMocks = !overflowEditMocks">
+              {{ overflowEditMocks ? '▲ Hide mocks' : '4. Adjust mocks' }}
             </button>
-            <div v-if="overflowEditMocks" style="margin-top:10px">
-              <div v-for="m in scheduledMocks" :key="m.mockNumber"
-                   style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                <label style="font-size:.84rem;min-width:80px;font-weight:500">Mock {{ m.mockNumber }}</label>
-                <input type="date" style="width:160px"
-                       :value="mockDateOverrides[m.mockNumber] || m.dateStr"
-                       @change="mockDateOverrides = { ...mockDateOverrides, [m.mockNumber]: $event.target.value }" />
-                <span style="font-size:.78rem;color:var(--c-muted)" v-if="!mockDateOverrides[m.mockNumber]">scheduled</span>
-                <span style="font-size:.78rem;color:#2563eb" v-else>changed</span>
+            <div v-if="overflowEditMocks" style="margin-top:10px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:.88rem;font-weight:500;min-width:140px">Number of mocks:</span>
+                <div class="spinner-group">
+                  <button @click="numMocks = Math.max(0, numMocks - 1)">−</button>
+                  <input type="number" min="0" max="10" v-model.number="numMocks" style="width:48px" />
+                  <button @click="numMocks = Math.min(10, numMocks + 1)">+</button>
+                </div>
               </div>
-              <button class="btn btn-primary btn-sm" style="margin-top:4px"
-                      @click="applyMockDateOverrides()">
-                ✓ Apply &amp; recalculate
-              </button>
+              <div v-if="scheduledMocks.length > 0">
+                <div v-for="m in scheduledMocks" :key="m.mockNumber"
+                     style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                  <label style="font-size:.84rem;min-width:80px;font-weight:500">Mock {{ m.mockNumber }}</label>
+                  <input type="date" style="width:160px"
+                         :value="mockDateOverrides[m.mockNumber] || m.dateStr"
+                         @change="mockDateOverrides = { ...mockDateOverrides, [m.mockNumber]: $event.target.value }" />
+                  <span style="font-size:.78rem;color:var(--c-muted)" v-if="!mockDateOverrides[m.mockNumber]">scheduled</span>
+                  <span style="font-size:.78rem;color:#2563eb" v-else>changed</span>
+                </div>
+                <button class="btn btn-primary btn-sm" style="margin-top:4px"
+                        @click="applyMockDateOverrides()">
+                  ✓ Apply &amp; recalculate
+                </button>
+              </div>
             </div>
           </div>
 
@@ -907,6 +991,10 @@ window.StudyApp = {
           <span class="plan-stat-value">{{ planResult.topics.length }}</span>
           <span class="plan-stat-label">topics</span>
         </div>
+        <div class="plan-stat">
+          <span class="plan-stat-value">{{ planResult.sessionLength }} min</span>
+          <span class="plan-stat-label">study unit duration</span>
+        </div>
         <div class="plan-stat" v-if="planResult.mocks.filter(m => m.type === 'mock').length > 0">
           <span class="plan-stat-value">{{ planResult.mocks.filter(m => m.type === 'mock').length }}</span>
           <span class="plan-stat-label">mock exams</span>
@@ -915,10 +1003,10 @@ window.StudyApp = {
 
       <!-- Tabs -->
       <div class="tab-bar">
-        <button class="tab-btn" :class="{ active: activeTab === 'trajectory' }" @click="setTab('trajectory')">Visual Trajectory</button>
+        <button class="tab-btn" :class="{ active: activeTab === 'calendar' }"   @click="setTab('calendar')">Calendar</button>
         <button class="tab-btn" :class="{ active: activeTab === 'daily' }"      @click="setTab('daily')">Day-by-Day</button>
         <button class="tab-btn" :class="{ active: activeTab === 'topics' }"     @click="setTab('topics')">Topic Summary</button>
-        <button class="tab-btn" :class="{ active: activeTab === 'calendar' }"   @click="setTab('calendar')">Calendar</button>
+        <button class="tab-btn" :class="{ active: activeTab === 'trajectory' }" @click="setTab('trajectory')">Visual Trajectory</button>
       </div>
 
       <!-- ── Tab: Visual Trajectory ── -->
@@ -963,11 +1051,9 @@ window.StudyApp = {
 
       <!-- ── Tab: Day-by-Day ── -->
       <div v-if="activeTab === 'daily'">
-        <div class="session-length-note" style="margin-bottom:10px">
-          Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: {{ settings.mockDuration || 90 }} min &nbsp;·&nbsp; Post-mock revision: full day
-        </div>
-        <div v-if="planTotalHours !== null" style="margin-bottom:12px;font-size:.85rem;color:var(--c-muted)">
-          {{ studyDaysWithSessions.length }} study days &nbsp;·&nbsp; ~{{ planTotalHours }} h total
+        <div style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-ghost btn-sm" @click="expandAllDays()">▼ Expand all</button>
+          <button class="btn btn-ghost btn-sm" @click="collapseAllDays()">▶ Collapse all</button>
         </div>
         <template v-for="day in studyDaysWithSessions" :key="day.dateKey">
           <div class="day-block"
@@ -981,7 +1067,7 @@ window.StudyApp = {
               <span v-if="day.dateKey === todayKey" class="today-badge">Today</span>
               <span v-if="isBlockedDay(day.dateKey)" class="blocked-badge">Not studying</span>
               <span class="session-count">
-                {{ day.sessions.length }} session{{ day.sessions.length !== 1 ? 's' : '' }}
+                {{ day.sessions.length }} unit{{ day.sessions.length !== 1 ? 's' : '' }}
                 <span class="day-time-est" v-if="dayEstimatedTime(day.sessions)">· {{ dayEstimatedTime(day.sessions) }}</span>
               </span>
               <button v-if="trackingMode" class="btn btn-ghost btn-sm day-block-btn"
@@ -1007,10 +1093,6 @@ window.StudyApp = {
 
       <!-- ── Tab: Topic Summary ── -->
       <div v-if="activeTab === 'topics'">
-        <div class="session-length-note" style="margin-bottom:10px">
-          Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: {{ settings.mockDuration || 90 }} min
-        </div>
-
         <!-- Controls (only shown when there are groups) -->
         <div v-if="hasGroups" style="margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <button class="btn btn-secondary btn-sm" @click="topicSummaryCollapsed = !topicSummaryCollapsed">
@@ -1028,7 +1110,7 @@ window.StudyApp = {
             <thead>
               <tr>
                 <th style="width:200px">Group / Topic</th>
-                <th style="width:110px">Sessions</th>
+                <th style="width:110px">Units</th>
                 <th style="width:110px">Est. time</th>
                 <th>Learn start → last practice</th>
               </tr>
@@ -1128,46 +1210,99 @@ window.StudyApp = {
 
       <!-- ── Tab: Calendar View ── -->
       <div v-if="activeTab === 'calendar'" class="cal-wrap">
-        <div class="session-length-note" style="margin-bottom:10px">
-          Session length: {{ settings.sessionDuration }} min &nbsp;·&nbsp; Mock exam: {{ settings.mockDuration || 90 }} min &nbsp;·&nbsp; Post-mock revision: full day
-        </div>
         <div v-if="trackingMode" class="tracking-cal-hint">
-          Click any day to view sessions or toggle it as a skip day.
+          Click any day to view study units or toggle it as a skip day.
           <button class="btn btn-primary btn-sm" style="margin-left:12px" @click="doRecalculate()">↺ Recalculate from today</button>
         </div>
 
-        <!-- Month navigation -->
+        <!-- Nav: view toggle + month/week navigation -->
         <div class="cal-nav">
-          <button class="btn btn-ghost btn-sm" @click="prevCalMonth()">← Prev</button>
-          <span class="cal-month-label">{{ calendarMonthLabel }}</span>
-          <button class="btn btn-ghost btn-sm" @click="nextCalMonth()">Next →</button>
+          <div class="cal-view-toggle">
+            <button class="cal-toggle-btn" :class="{ active: calViewMode === 'month' }" @click="switchCalView('month')">Month</button>
+            <button class="cal-toggle-btn" :class="{ active: calViewMode === 'week' }"  @click="switchCalView('week')">Week</button>
+          </div>
+          <div class="cal-nav-pager" v-if="calViewMode === 'month'">
+            <button class="btn btn-ghost btn-sm cal-today-btn" @click="goToToday()">Today</button>
+            <button class="btn btn-ghost btn-sm" @click="prevCalMonth()">← Prev</button>
+            <span class="cal-month-label">{{ calendarMonthLabel }}</span>
+            <button class="btn btn-ghost btn-sm" @click="nextCalMonth()">Next →</button>
+          </div>
+          <div class="cal-nav-pager" v-else>
+            <button class="btn btn-ghost btn-sm cal-today-btn" @click="goToToday()">Today</button>
+            <button class="btn btn-ghost btn-sm" @click="prevCalWeek()">← Prev</button>
+            <span class="cal-month-label">{{ calendarWeekLabel }}</span>
+            <button class="btn btn-ghost btn-sm" @click="nextCalWeek()">Next →</button>
+          </div>
         </div>
 
-        <!-- Day-of-week headers -->
-        <div class="cal-grid">
-          <div class="cal-dow" v-for="d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d">{{ d }}</div>
+        <!-- Month view: Design B card grid -->
+        <template v-if="calViewMode === 'month'">
+          <div class="cal-grid">
+            <div class="cal-dow" v-for="d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d">{{ d }}</div>
+            <template v-for="(cell, ci) in calendarCells" :key="ci">
+              <div v-if="!cell" class="cal-cell cal-cell--pad"></div>
+              <div v-else class="cal-cell"
+                   :class="{
+                     'cal-cell--study':    cell.isStudyDay && !isBlockedDay(cell.dateKey),
+                     'cal-cell--blocked':  isBlockedDay(cell.dateKey),
+                     'cal-cell--selected': calendarPopover && calendarPopover.dateKey === cell.dateKey,
+                     'cal-cell--today':    cell.dateKey === todayKey,
+                     'cal-cell--exam':     cell.dateKey === examDate,
+                   }"
+                   @click="calCellClick(cell)">
+                <div class="cal-cell-header">
+                  <span class="cal-day-num">{{ cell.day }}</span>
+                  <span class="cal-cell-time" v-if="dayEstimatedTime(cell.sessions)">{{ dayEstimatedTime(cell.sessions) }}</span>
+                </div>
+                <div class="cal-bars" v-if="cell.activityBars.length">
+                  <div v-for="bar in cell.activityBars" :key="bar.type"
+                       class="cal-bar"
+                       :style="{ background: bar.color, width: bar.pct + '%' }"></div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
 
-          <!-- Day cells -->
-          <template v-for="(cell, ci) in calendarCells" :key="ci">
-            <div v-if="!cell" class="cal-cell cal-cell--pad"></div>
-            <div v-else class="cal-cell"
+        <!-- Week view: Design C agenda list -->
+        <template v-else>
+          <div class="cal-week-list">
+            <div v-for="cell in calendarWeekCells" :key="cell.dateKey"
+                 class="cal-wday"
                  :class="{
-                   'cal-cell--study':    cell.isStudyDay && !isBlockedDay(cell.dateKey),
-                   'cal-cell--blocked':  isBlockedDay(cell.dateKey),
-                   'cal-cell--selected': calendarPopover && calendarPopover.dateKey === cell.dateKey,
-                   'cal-cell--today':    cell.dateKey === todayKey,
-                   'cal-cell--exam':     cell.dateKey === examDate,
+                   'cal-wday--study':    cell.isStudyDay && !isBlockedDay(cell.dateKey),
+                   'cal-wday--blocked':  isBlockedDay(cell.dateKey),
+                   'cal-wday--selected': calendarPopover && calendarPopover.dateKey === cell.dateKey,
+                   'cal-wday--today':    cell.dateKey === todayKey,
+                   'cal-wday--exam':     cell.dateKey === examDate,
+                   'cal-wday--off':      !cell.isStudyDay && !isBlockedDay(cell.dateKey),
                  }"
                  @click="calCellClick(cell)">
-              <span class="cal-day-num">{{ cell.day }}</span>
-              <div class="cal-dots" v-if="cell.activityDots.length">
-                <span v-for="dot in cell.activityDots" :key="dot.type"
-                      class="cal-dot" :style="{ background: dot.color }"></span>
+              <!-- Date column -->
+              <div class="cal-wday-date">
+                <div class="cal-wday-dow">{{ cell.dow }}</div>
+                <div class="cal-wday-num"
+                     :class="{ 'cal-wday-num--today': cell.dateKey === todayKey, 'cal-wday-num--exam': cell.dateKey === examDate }">
+                  {{ cell.day }}
+                </div>
               </div>
-              <span class="cal-cell-time" v-if="dayEstimatedTime(cell.sessions)">{{ dayEstimatedTime(cell.sessions) }}</span>
+              <!-- Bar region -->
+              <div class="cal-wday-bar">
+                <div v-if="cell.relWidth > 0" class="cal-wday-bar-track" :style="{ width: cell.relWidth + '%' }">
+                  <div v-for="seg in cell.activityBars" :key="seg.type"
+                       class="cal-wday-seg"
+                       :style="{ background: seg.color, flex: seg.pct }">
+                    {{ seg.label }}
+                  </div>
+                </div>
+                <span v-else class="cal-wday-off-label">— off —</span>
+              </div>
+              <!-- Time -->
+              <div class="cal-wday-time" v-if="cell.isStudyDay">{{ dayEstimatedTime(cell.sessions) }}</div>
+              <div class="cal-wday-time" v-else></div>
             </div>
-          </template>
-        </div>
+          </div>
+        </template>
 
         <!-- Legend -->
         <div class="cal-legend">
@@ -1189,12 +1324,12 @@ window.StudyApp = {
             <strong>{{ formatDate(calendarPopover.date) }}</strong>
             <span class="cal-detail-meta">
               <template v-if="calendarPopover.sessions.length">
-                {{ calendarPopover.sessions.length }} session{{ calendarPopover.sessions.length !== 1 ? 's' : '' }}
+                {{ calendarPopover.sessions.length }} unit{{ calendarPopover.sessions.length !== 1 ? 's' : '' }}
                 <span v-if="dayEstimatedTime(calendarPopover.sessions)">
                   · {{ dayEstimatedTime(calendarPopover.sessions) }}
                 </span>
               </template>
-              <template v-else>No sessions</template>
+              <template v-else>No units</template>
             </span>
             <button v-if="trackingMode"
                     class="btn btn-sm"
@@ -1364,26 +1499,16 @@ window.StudyApp = {
                     <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
                       <input type="radio" value="interleaved" v-model="settings.learningMode" style="margin-top:3px;flex-shrink:0" />
                       <span>
-                        <strong>Interleaved</strong> — once a topic&#39;s learning sessions are done, its practice sessions are distributed across the schedule alongside other topics.
+                        <strong>Interleaved</strong> — once a topic&#39;s learning units are done, its practice units are distributed across the schedule alongside other topics.
                       </span>
                     </label>
                     <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
                       <input type="radio" value="sequential" v-model="settings.learningMode" style="margin-top:3px;flex-shrink:0" />
                       <span>
-                        <strong>Sequential</strong> — fully complete one topic (all learning + all practice sessions) before moving to the next. Reviews still follow the spaced-repetition schedule.
+                        <strong>Sequential</strong> — fully complete one topic (all learning + all practice units) before moving to the next. Reviews still follow the spaced-repetition schedule.
                       </span>
                     </label>
                   </div>
-                </div>
-
-                <div class="form-group">
-                  <label>Study session duration (display only)</label>
-                  <div class="spinner-group">
-                    <button @click="settings.sessionDuration = Math.max(5, settings.sessionDuration - 5)">−</button>
-                    <input type="number" min="5" max="120" step="5" v-model.number="settings.sessionDuration" />
-                    <button @click="settings.sessionDuration = Math.min(120, settings.sessionDuration + 5)">+</button>
-                  </div>
-                  <span class="form-hint">Minutes per regular study session. Does not affect scheduling — used for time estimates only.</span>
                 </div>
 
                 <div class="form-group">
@@ -1414,29 +1539,29 @@ window.StudyApp = {
                 </div>
 
                 <div class="form-group">
-                  <label>Max days between practice sessions</label>
+                  <label>Max days between practice units</label>
                   <div class="spinner-group">
                     <button @click="settings.maxDaysBetweenPractice = Math.max(1, (settings.maxDaysBetweenPractice || 7) - 1)">−</button>
                     <input type="number" min="1" max="60" v-model.number="settings.maxDaysBetweenPractice" />
                     <button @click="settings.maxDaysBetweenPractice = Math.min(60, (settings.maxDaysBetweenPractice || 7) + 1)">+</button>
                   </div>
-                  <span class="form-hint">Maximum gap (days) between learning and first practice, and between consecutive practice sessions.</span>
+                  <span class="form-hint">Maximum gap (days) between learning and first practice, and between consecutive practice units.</span>
                 </div>
 
                 <div class="form-group">
-                  <label>Sessions per topic (editable defaults)</label>
-                  <span class="form-hint" style="display:block;margin-bottom:8px">Number of sessions (not time) assigned to each topic based on difficulty.</span>
+                  <label>Time units per topic (editable defaults)</label>
+                  <span class="form-hint" style="display:block;margin-bottom:8px">Relative time units for learning and practice per topic, by difficulty. Higher values = more units allocated per topic.</span>
                   <table class="activity-count-table" style="margin-top:0">
                     <thead><tr><th>Activity</th><th>Easy</th><th>Medium</th><th>Hard</th></tr></thead>
                     <tbody>
                       <tr>
-                        <td>Learning sessions</td>
+                        <td>Learning units</td>
                         <td><input type="number" min="1" max="10" v-model.number="settings.lnTable.easy" /></td>
                         <td><input type="number" min="1" max="10" v-model.number="settings.lnTable.medium" /></td>
                         <td><input type="number" min="1" max="10" v-model.number="settings.lnTable.hard" /></td>
                       </tr>
                       <tr>
-                        <td>Practice sessions</td>
+                        <td>Practice units</td>
                         <td><input type="number" min="1" max="20" v-model.number="settings.pnTable.easy" /></td>
                         <td><input type="number" min="1" max="20" v-model.number="settings.pnTable.medium" /></td>
                         <td><input type="number" min="1" max="20" v-model.number="settings.pnTable.hard" /></td>
@@ -1449,7 +1574,7 @@ window.StudyApp = {
                   <label>Spaced repetition intervals (comma-separated day gaps)</label>
                   <input type="text" class="sr-input" v-model="settingsSrText"
                          placeholder="1, 6, 16, 45, 131" />
-                  <span class="form-hint">First value = days after last practice session before first review. Remaining values = gaps between consecutive reviews. Default: 1, 6, 16, 45, 131</span>
+                  <span class="form-hint">First value = days after last practice unit before first review. Remaining values = gaps between consecutive reviews. Default: 1, 6, 16, 45, 131</span>
                 </div>
 
               </div>
@@ -1517,10 +1642,11 @@ window.StudyApp = {
       // Step 3
       startDate: today,
       examDate:  '',
-      firstWeek: { mon: 1, tue: 1, wed: 1, thu: 1, fri: 1, sat: 0, sun: 0 },
+      firstWeek: { mon: 60, tue: 60, wed: 60, thu: 60, fri: 60, sat: 0, sun: 0 },
       rampMode:  'linear',
       intensityMultiplier: 1.5,
       numMocks:  3,
+      unitLength: 20,  // minutes per study unit (fixed by user, used as forcedSessionLength)
       scheduleTooltip: { visible: false, text: '', x: 0, y: 0 },
 
       // Step 2 — group collapse state
@@ -1533,7 +1659,7 @@ window.StudyApp = {
       planResult:       null,
       hydratedCalendar: [],
       chartTopicsData:  [],
-      activeTab:        'trajectory',
+      activeTab:        'calendar',
       completionStatus: {},
       overflowExpanded: false,
       overflowEditSchedule: false,
@@ -1549,8 +1675,10 @@ window.StudyApp = {
       expandedTopicGroups: {},
 
       // Calendar view
-      currentCalMonth: null,
-      calendarPopover: null,
+      currentCalMonth:    null,
+      currentCalWeekStart: null,
+      calViewMode:        'month',   // 'month' | 'week'
+      calendarPopover:    null,
 
       // Chart tooltip
       tooltip:  null,
@@ -1563,7 +1691,7 @@ window.StudyApp = {
       advancedExpanded:  false,
       settingsSrText:    (settings.srIntervals || [1,6,16,45,131]).join(', '),
       prevScreen:        'home',
-      prevActiveTab:     'trajectory',
+      prevActiveTab:     'calendar',
       settingsSnapshot:  null,
 
       // Loading / error
@@ -1610,14 +1738,14 @@ window.StudyApp = {
     // Collapsed topic summary: one entry per group (or standalone topic)
     collapsedTopicGroups() {
       if (!this.planResult || !this.hydratedCalendar.length) return [];
-      const summaries = this.topicSummaries; // [{title, activities}] in planTopics order
+      const summaries   = this.topicSummaries;
+      const sessionMins = this.planResult.sessionLength || 20;
 
-      // Build lookup: planTopic id → parentId from this.topics
       const uiTopicById = {};
       this.topics.forEach(t => { uiTopicById[t.id] = t; });
 
       const groups = [];
-      const groupMap = {}; // groupId → index in groups
+      const groupMap = {};
 
       this.planResult.topics.forEach((pt, i) => {
         const uiTopic  = uiTopicById[pt.id];
@@ -1643,7 +1771,7 @@ window.StudyApp = {
           for (const act of sum.activities) {
             grp.totalSessions += act.count;
             if (act.activityType !== 'mock' && act.activityType !== 'postMock') {
-              grp.totalMins += act.count * (this.settings.sessionDuration || 20);
+              grp.totalMins += act.count * sessionMins;
             }
             const d = act.date instanceof Date ? act.date : new Date((act.date || '') + 'T00:00:00Z');
             if (act.activityType === 'learn') {
@@ -1654,11 +1782,10 @@ window.StudyApp = {
             }
           }
         } else {
-          // Standalone topic
           const totalSessions = sum.activities.reduce((s, a) => s + a.count, 0);
           const totalMins = sum.activities
             .filter(a => a.activityType !== 'mock' && a.activityType !== 'postMock')
-            .reduce((s, a) => s + a.count * (this.settings.sessionDuration || 20), 0);
+            .reduce((s, a) => s + a.count * sessionMins, 0);
           let firstLearnDate = null, lastPracticeDate = null;
           for (const act of sum.activities) {
             const d = act.date instanceof Date ? act.date : new Date((act.date || '') + 'T00:00:00Z');
@@ -1738,22 +1865,26 @@ window.StudyApp = {
       const nTopics   = this.planResult.topics.length;
       const extraSess = ov.estimatedExtraSessionsPerWeek;
       let msg = '';
-      if ((ov.mockShortfall || 0) > 0) {
-        const placed    = ov.placedMockCount;
-        const requested = placed + ov.mockShortfall;
-        msg += `Only ${placed} of ${requested} mock exam${requested > 1 ? 's' : ''} could be scheduled — the study window is too short. Consider extending the exam date or adding more study days. `;
+      if (ov.sessionLengthInsufficient) {
+        const minLen = typeof StudyPlanner !== 'undefined' ? StudyPlanner.SESSION_MIN : 10;
+        msg += `Not enough daily study time: the computed unit length would be ~${ov.requiredSessionLength} min, but the minimum is ${minLen} min. Increase your daily study time to make the plan work. `;
       }
       if (nMCQ > 0) {
-        msg += `${nMCQ} of ${nTopics} topics will not complete all practice sessions before the exam. `;
+        msg += `${nMCQ} of ${nTopics} topics will not complete all practice units before the exam. `;
       }
       if (nLearn > 0) {
         msg += `${nLearn} topic${nLearn > 1 ? 's' : ''} will not finish learning before the exam. `;
       }
       if (nReview > 0) {
-        msg += `${nReview} topic${nReview > 1 ? 's' : ''} will miss scheduled review sessions. `;
+        msg += `${nReview} topic${nReview > 1 ? 's' : ''} will miss scheduled review units. `;
       }
       if (extraSess > 0) {
-        msg += `You need approximately ${extraSess} more sessions per week to complete the full plan.`;
+        msg += `You need approximately ${extraSess} more study units per week to complete the full plan. `;
+      }
+      if ((ov.mockShortfall || 0) > 0) {
+        const placed    = ov.placedMockCount;
+        const requested = placed + ov.mockShortfall;
+        msg += `Only ${placed} of ${requested} mock exam${requested > 1 ? 's' : ''} could be scheduled — the study window is too short. Consider extending the exam date or adding more study days.`;
       }
       return msg;
     },
@@ -1768,12 +1899,13 @@ window.StudyApp = {
 
     planTotalHours() {
       if (!this.hydratedCalendar.length) return null;
-      const mockMins = this.settings.mockDuration || 90;
+      const mockMins    = this.settings.mockDuration || 90;
+      const sessionMins = this.planResult?.sessionLength || 20;
       let totalMins = 0;
       for (const day of this.hydratedCalendar) {
         for (const s of (day.sessions || [])) {
           if (s.activityType === 'mock')          totalMins += mockMins;
-          else if (s.activityType !== 'postMock') totalMins += (this.settings.sessionDuration || 20);
+          else if (s.activityType !== 'postMock') totalMins += sessionMins;
         }
       }
       return Math.round(totalMins / 60);
@@ -1862,7 +1994,7 @@ window.StudyApp = {
         const hydr = dayMap[dk];
         const sessions = hydr ? hydr.sessions : [];
 
-        // Unique activity dots in display order
+        // Unique activity dots (kept for legend compatibility)
         const seen = new Set();
         const activityDots = [];
         for (const s of sessions) {
@@ -1872,7 +2004,15 @@ window.StudyApp = {
           }
         }
 
-        cells.push({ date, dateKey: dk, day: d, sessions, activityDots, isStudyDay: sessions.length > 0 });
+        // Activity bars: stacked proportional bars (Design B style)
+        const typeCount = {};
+        for (const s of sessions) typeCount[s.activityType] = (typeCount[s.activityType] || 0) + 1;
+        const totalS = sessions.length;
+        const activityBars = totalS > 0
+          ? Object.entries(typeCount).map(([type, n]) => ({ type, color: DOT_COLORS[type] || '#999', pct: (n / totalS) * 100 }))
+          : [];
+
+        cells.push({ date, dateKey: dk, day: d, sessions, activityDots, activityBars, isStudyDay: sessions.length > 0 });
       }
 
       // Trailing padding to complete last row
@@ -1882,21 +2022,69 @@ window.StudyApp = {
       return cells;
     },
 
+    calendarWeekLabel() {
+      if (!this.currentCalWeekStart) return '';
+      const s = this.currentCalWeekStart;
+      const e = new Date(s.getTime() + 6 * 86400000);
+      const sDay = s.getUTCDate();
+      const eDay = e.getUTCDate();
+      const sMon = s.toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+      const eMon = e.toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+      const yr   = e.getUTCFullYear();
+      return sMon === eMon ? `${sDay}–${eDay} ${sMon} ${yr}` : `${sDay} ${sMon} – ${eDay} ${eMon} ${yr}`;
+    },
+
+    calendarWeekCells() {
+      if (!this.currentCalWeekStart) return [];
+      const DOT_COLORS  = { learn: '#3b82f6', practice: '#f59e0b', review: '#16a34a', mock: '#7c3aed', postMock: '#c084fc' };
+      const SEG_LABELS  = { learn: 'Learn', practice: 'Practice', review: 'Review', mock: 'Mock', postMock: 'Post-mock' };
+      const DOW_LABELS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const dayMap = {};
+      for (const day of this.hydratedCalendar) {
+        const dk = day.date instanceof Date ? day.date.toISOString().slice(0, 10) : day.date;
+        dayMap[dk] = day;
+      }
+      let maxSessions = 0;
+      const cells = [];
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(this.currentCalWeekStart.getTime() + i * 86400000);
+        const dk   = date.toISOString().slice(0, 10);
+        const hydr = dayMap[dk];
+        const sessions = hydr ? hydr.sessions : [];
+        if (sessions.length > maxSessions) maxSessions = sessions.length;
+        cells.push({ date, dateKey: dk, day: date.getUTCDate(), dow: DOW_LABELS[i], sessions, isStudyDay: sessions.length > 0 });
+      }
+      for (const cell of cells) {
+        const typeCount = {};
+        for (const s of cell.sessions) typeCount[s.activityType] = (typeCount[s.activityType] || 0) + 1;
+        const total = cell.sessions.length;
+        cell.relWidth    = maxSessions > 0 ? (total / maxSessions) * 100 : 0;
+        cell.activityBars = total > 0
+          ? Object.entries(typeCount).map(([type, n]) => ({
+              type,
+              color: DOT_COLORS[type] || '#999',
+              label: SEG_LABELS[type] || type,
+              pct: (n / total) * 100,
+            }))
+          : [];
+      }
+      return cells;
+    },
+
     lastWeekComputed() {
-      const maxPerDay = Math.min(20, Math.floor(84 * 60 / 7 / (this.settings.sessionDuration || 20)));
       const out = {};
       for (const dow of ['mon','tue','wed','thu','fri','sat','sun']) {
         const base = this.firstWeek[dow] || 0;
-        out[dow] = base === 0 ? 0 : Math.min(maxPerDay, Math.round(base * this.intensityMultiplier));
+        out[dow] = base === 0 ? 0 : Math.min(720, Math.round(base * this.intensityMultiplier));
       }
       return out;
     },
 
-    firstWeekTotalSessions() {
+    firstWeekTotalMins() {
       return Object.values(this.firstWeek).reduce((s, v) => s + (v || 0), 0);
     },
 
-    lastWeekTotalSessions() {
+    lastWeekTotalMins() {
       return Object.values(this.lastWeekComputed).reduce((s, v) => s + (v || 0), 0);
     },
 
@@ -1909,18 +2097,47 @@ window.StudyApp = {
       const totalWeeks = Math.max(2, Math.ceil(totalDays / 7));
       const last = this.lastWeekComputed;
       const DOW  = ['mon','tue','wed','thu','fri','sat','sun'];
-      const dur  = this.settings.sessionDuration || 20;
       const data = [];
       for (let w = 0; w < totalWeeks; w++) {
-        let sessions = 0;
+        let mins = 0;
         for (const d of DOW) {
-          sessions += StudyPlanner.interpolateSessions(
+          mins += StudyPlanner.interpolateSessions(
             this.firstWeek[d] || 0, last[d] || 0, w, totalWeeks, this.rampMode
           );
         }
-        data.push({ week: w + 1, hours: sessions * dur / 60 });
+        data.push({ week: w + 1, hours: mins / 60 });
       }
       return data;
+    },
+
+    computedSessionLengthPreview() {
+      if (!this.startDate || !this.examDate) return null;
+      if (typeof StudyPlanner === 'undefined' || !StudyPlanner.countCalendarMinutes) return null;
+      const start = new Date(this.startDate + 'T00:00:00Z');
+      const exam  = new Date(this.examDate  + 'T00:00:00Z');
+      if (exam <= start) return null;
+      const leafTopics = this.topics.filter(t => !t.isGroup);
+      if (!leafTopics.length) return null;
+      const mergedSettings = {
+        lnTable: this.settings.lnTable || { easy: 1, medium: 2, hard: 3 },
+        pnTable: this.settings.pnTable || { easy: 3, medium: 4, hard: 5 },
+      };
+      const totalMins  = StudyPlanner.countCalendarMinutes(start, exam, this.firstWeek, this.lastWeekComputed, this.rampMode);
+      const totalUnits = StudyPlanner.computeTotalWorkUnits(
+        leafTopics.map(t => ({ difficulty: t.difficulty || 'medium' })),
+        mergedSettings
+      );
+      if (!totalUnits || !totalMins) return null;
+      const rawT = totalMins / (totalUnits * StudyPlanner.OVERHEAD_FACTOR);
+      const T    = StudyPlanner.computeOptimalSessionLength(
+        totalMins, totalUnits, StudyPlanner.OVERHEAD_FACTOR,
+        StudyPlanner.SESSION_MIN, StudyPlanner.SESSION_MAX
+      );
+      return {
+        sessionLength: Math.round(T * 10) / 10,
+        insufficient:  rawT < StudyPlanner.SESSION_MIN,
+        rawT:          Math.round(rawT * 10) / 10,
+      };
     },
 
     totalScheduleHours() {
@@ -1943,6 +2160,7 @@ window.StudyApp = {
         if (screen === 'step1') {
           this.trackingMode = false;
           this.activePlanId = null;
+          this.unitLength   = 20;
         }
       }
       if (screen === 'planList') {
@@ -2006,40 +2224,30 @@ window.StudyApp = {
       });
     },
 
-    // Apply any settings hints extracted from free text (session duration, schedule).
+    // Apply any settings hints extracted from free text (schedule, dates).
     _applyFreeTextToSettings(info) {
       if (!info) return;
       let changed = false;
+      const WDAYS = ['mon','tue','wed','thu','fri'];
+      const WEND  = ['sat','sun'];
 
-      // Session duration — apply first so schedule conversions use the updated value
-      if (info.sessionMinutes && info.sessionMinutes >= 5 && info.sessionMinutes <= 120) {
-        this.settings.sessionDuration = Math.round(info.sessionMinutes / 5) * 5;
-        changed = true;
-      }
-
-      const dur     = this.settings.sessionDuration || 20;
-      const toN     = mins => Math.min(12, Math.max(0, Math.round(mins / dur)));
-      const WDAYS   = ['mon','tue','wed','thu','fri'];
-      const WEND    = ['sat','sun'];
-
-      // Start-of-plan intensity → firstWeek
+      // Start-of-plan intensity → firstWeek (minutes directly)
       if (info.weekdayMinutesStart != null) {
-        const n = toN(info.weekdayMinutesStart);
-        WDAYS.forEach(d => { this.firstWeek[d] = n; });
+        const mins = Math.max(0, Math.min(720, Math.round(info.weekdayMinutesStart / 20) * 20));
+        WDAYS.forEach(d => { this.firstWeek[d] = mins; });
         changed = true;
       }
       if (info.weekendMinutesStart != null) {
-        const n = toN(info.weekendMinutesStart);
-        WEND.forEach(d => { this.firstWeek[d] = n; });
+        const mins = Math.max(0, Math.min(720, Math.round(info.weekendMinutesStart / 20) * 20));
+        WEND.forEach(d => { this.firstWeek[d] = mins; });
         changed = true;
       }
 
       // End-of-plan intensity → derive intensityMultiplier from weekday end vs start ratio
       if (info.weekdayMinutesEnd != null) {
-        const endN   = toN(info.weekdayMinutesEnd);
-        const startN = WDAYS.reduce((s, d) => s + (this.firstWeek[d] || 0), 0) / WDAYS.length;
-        if (startN > 0 && endN > 0) {
-          this.intensityMultiplier = Math.max(1, Math.min(8, parseFloat((endN / startN).toFixed(2))));
+        const startMins = WDAYS.reduce((s, d) => s + (this.firstWeek[d] || 0), 0) / WDAYS.length;
+        if (startMins > 0 && info.weekdayMinutesEnd > 0) {
+          this.intensityMultiplier = Math.max(1, Math.min(8, parseFloat((info.weekdayMinutesEnd / startMins).toFixed(2))));
         }
         changed = true;
       }
@@ -2075,9 +2283,6 @@ window.StudyApp = {
         lines.push(`All topics starting state: ${info.globalStartingState}`);
       if (info.maxTopics)
         lines.push(`Topic count limited to ${info.maxTopics}`);
-      if (info.sessionMinutes)
-        lines.push(`Session length updated to ${Math.round(info.sessionMinutes / 5) * 5} min`);
-      const dur = Math.round(info.sessionMinutes / 5) * 5 || 20;
       const fmtM = m => m >= 60
         ? (m % 60 === 0 ? `${m/60}h` : `${Math.floor(m/60)}h${m%60}`)
         : `${m}min`;
@@ -2121,7 +2326,7 @@ window.StudyApp = {
         if (this.freeText.trim()) {
           this.loadingMsg = 'Interpreting your notes…';
           freeTextInfo = await StudyApi.parseFreeText(this.freeText, this.settings.apiKey, this.settings.model);
-          // Apply settings hints (session duration, schedule) immediately
+          // Apply schedule hints (daily minutes, dates, mock count) immediately
           this._applyFreeTextToSettings(freeTextInfo);
         }
 
@@ -2432,16 +2637,17 @@ window.StudyApp = {
       const srIntervals = this.settingsSrText
         .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
       return {
-        topics:          planTopics,
-        startDate:       new Date(this.startDate + 'T00:00:00Z'),
-        examDate:        new Date(this.examDate   + 'T00:00:00Z'),
-        firstWeek:       this.firstWeek,
-        lastWeek:        this.lastWeekComputed,
-        rampMode:        this.rampMode,
-        numMocks:        this.numMocks,
-        srIntervals:     srIntervals.length ? srIntervals : [1,6,16,45,131],
-        postMockSameDay: this.settings.postMockSameDay !== false,
-        fixedMockDates: this._buildFixedMockDates(),
+        topics:              planTopics,
+        startDate:           new Date(this.startDate + 'T00:00:00Z'),
+        examDate:            new Date(this.examDate   + 'T00:00:00Z'),
+        firstWeek:           this.firstWeek,
+        lastWeek:            this.lastWeekComputed,
+        rampMode:            this.rampMode,
+        numMocks:            this.numMocks,
+        srIntervals:         srIntervals.length ? srIntervals : [1,6,16,45,131],
+        postMockSameDay:     this.settings.postMockSameDay !== false,
+        fixedMockDates:      this._buildFixedMockDates(),
+        forcedSessionLength: this.unitLength,
         settings: {
           lnTable:                this.settings.lnTable,
           pnTable:                this.settings.pnTable,
@@ -2455,11 +2661,13 @@ window.StudyApp = {
     _buildFixedMockDates() {
       const keys = Object.keys(this.mockDateOverrides);
       if (!keys.length) return null;
-      return keys
-        .map(k => ({ n: Number(k), d: this.mockDateOverrides[k] }))
-        .filter(x => x.d)
-        .sort((a, b) => a.n - b.n)
-        .map(x => new Date(x.d + 'T00:00:00Z'));
+      const result = {};
+      for (const k of keys) {
+        if (this.mockDateOverrides[k]) {
+          result[Number(k)] = new Date(this.mockDateOverrides[k] + 'T00:00:00Z');
+        }
+      }
+      return Object.keys(result).length ? result : null;
     },
 
     // Apply a finished generatePlan result to Vue state.
@@ -2485,13 +2693,18 @@ window.StudyApp = {
       this.overflowEditMocks    = false;
       this.expandedDays         = {};
       this.expandedTopicGroups  = {};
+      this.calendarPopover      = null;
+      if (result.overflow.hasOverflow) this.$nextTick(() => this.drawScheduleChart());
       this.initCalMonth();
+      this.initCalWeek();
+      this.$nextTick(() => this._openTodayPopover());
       StudyStorage.saveCurrentPlan(this.buildPlanData());
       this._savePlanToStorage();
     },
 
     doGeneratePlan() {
       this.mockDateOverrides = {};
+      this.unitLength = 20;   // always recalculate from scratch; auto-adjust will find the right value
       this.loading    = true;
       this.loadingMsg = 'Building your study plan…';
       this.error      = null;
@@ -2500,8 +2713,23 @@ window.StudyApp = {
 
       setTimeout(() => {
         try {
-          this._applyPlanResult(StudyPlanner.generatePlan(this._planConfig()));
-          this.activeTab = 'trajectory';
+          let result = StudyPlanner.generatePlan(this._planConfig());
+          // Auto-adjust unit length downward if the plan overflows
+          if (result.overflow.hasOverflow) {
+            const minT = typeof StudyPlanner !== 'undefined' ? StudyPlanner.SESSION_MIN : 10;
+            const startT = result.sessionLength - 1;
+            for (let t = startT; t >= minT; t--) {
+              const candidate = StudyPlanner.generatePlan({ ...this._planConfig(), forcedSessionLength: t });
+              if (!candidate.overflow.hasOverflow) {
+                this.unitLength = t;
+                result = candidate;
+                break;
+              }
+              if (t === minT) result = candidate; // apply min-T result even if still overflow
+            }
+          }
+          this._applyPlanResult(result);
+          this.activeTab = 'calendar';
           this.navigate('step4');
         } catch (e) {
           this.error = e.message;
@@ -2520,7 +2748,7 @@ window.StudyApp = {
       setTimeout(() => {
         try {
           this._applyPlanResult(StudyPlanner.generatePlan(this._planConfig()));
-          this.activeTab = 'trajectory';
+          this.activeTab = 'calendar';
         } catch (e) {
           this.error = e.message;
         } finally {
@@ -2530,8 +2758,49 @@ window.StudyApp = {
       }, 50);
     },
 
-    // Scale firstWeek/lastWeek up so the plan fits, then regenerate.
-    // Runs a first pass to measure overflow, adjusts, then runs a second pass.
+    // Try progressively shorter unit lengths (1-min steps) keeping daily minutes fixed.
+    // Uses forcedSessionLength to override the planner's auto-computed T.
+    doAdjustSessionLength() {
+      this.loading    = true;
+      this.loadingMsg = 'Finding optimal unit length…';
+      this.error      = null;
+
+      setTimeout(() => {
+        try {
+          const currentT = this.planResult.sessionLength;
+          const minT     = typeof StudyPlanner !== 'undefined' ? StudyPlanner.SESSION_MIN : 10;
+          let   result   = null;
+          let   found    = false;
+
+          for (let t = currentT - 1; t >= minT; t -= 1) {
+            const cfg = { ...this._planConfig(), forcedSessionLength: t };
+            result = StudyPlanner.generatePlan(cfg);
+            if (!result.overflow.hasOverflow) {
+              found = true;
+              break;
+            }
+          }
+
+          if (!found) {
+            this.error = `Reducing unit length to ${minT} min is not enough to fix the overflow. Try increasing daily study time instead.`;
+            // Still apply the result at minimum T so the user sees what's left
+            result = StudyPlanner.generatePlan({ ...this._planConfig(), forcedSessionLength: minT });
+          }
+
+          if (found) this.unitLength = result.sessionLength;
+          this._applyPlanResult(result);
+          this.activeTab = 'calendar';
+          this.navigate('step4');
+        } catch (e) {
+          this.error = e.message;
+        } finally {
+          this.loading = false;
+          this.$nextTick(() => this.renderChart());
+        }
+      }, 50);
+    },
+
+    // Scale firstWeek daily minutes up so the plan fits, then regenerate.
     doAdjustSchedule() {
       this.loading    = true;
       this.loadingMsg = 'Adjusting schedule…';
@@ -2539,28 +2808,44 @@ window.StudyApp = {
 
       setTimeout(() => {
         try {
-          // First pass: measure the deficit.
           let result = StudyPlanner.generatePlan(this._planConfig());
 
           if (result.overflow.hasOverflow) {
-            const capacity = result.calendar.reduce((s, d) => s + d.totalSessions, 0);
-            const factor   = ((capacity + result.overflow.totalMissingSessions) / capacity) * 1.10;
+            const { overflow, sessionStats, sessionLength } = result;
+            let factor = 1;
 
-            for (const key of Object.keys(this.firstWeek)) {
-              if (this.firstWeek[key] > 0)
-                this.firstWeek[key] = Math.min(12, Math.max(1, Math.round(this.firstWeek[key] * factor)));
+            // Session-length overflow: need more total minutes so T ≥ SESSION_MIN
+            if (overflow.sessionLengthInsufficient && overflow.requiredSessionLength > 0) {
+              const rawT    = overflow.requiredSessionLength;
+              const minT    = StudyPlanner.SESSION_MIN;
+              factor = Math.max(factor, (minT / rawT) * 1.05);
             }
 
-            // Second pass with the adjusted schedule.
-            result = StudyPlanner.generatePlan(this._planConfig());
+            // Topic overflow: need more sessions
+            if ((overflow.incompleteLearnTopics.length > 0 || overflow.incompleteMCQTopics.length > 0) &&
+                overflow.totalMissingSessions > 0 && sessionStats.totalMinutes > 0) {
+              const addedMins = overflow.totalMissingSessions * sessionLength;
+              const f = ((sessionStats.totalMinutes + addedMins) / sessionStats.totalMinutes) * 1.10;
+              factor = Math.max(factor, f);
+            }
 
-            if (result.overflow.hasOverflow) {
-              this.error = 'The schedule is at maximum capacity but the plan still overflows. Try removing some topics.';
+            if (factor > 1) {
+              for (const key of Object.keys(this.firstWeek)) {
+                if (this.firstWeek[key] > 0) {
+                  // Round to nearest 20-min increment
+                  const raw = this.firstWeek[key] * factor;
+                  this.firstWeek[key] = Math.min(720, Math.max(20, Math.round(raw / 20) * 20));
+                }
+              }
+              result = StudyPlanner.generatePlan(this._planConfig());
+              if (result.overflow.hasOverflow) {
+                this.error = 'Schedule adjusted but the plan still overflows. Try adding more days or removing topics.';
+              }
             }
           }
 
           this._applyPlanResult(result);
-          this.activeTab = 'trajectory';
+          this.activeTab = 'calendar';
           this.navigate('step4');
         } catch (e) {
           this.error = e.message;
@@ -2580,6 +2865,18 @@ window.StudyApp = {
       }
       if (tab === 'daily' && this.trackingMode) {
         this.$nextTick(() => this.scrollToToday());
+      }
+      if (tab === 'calendar') {
+        this.$nextTick(() => this._openTodayPopover());
+      }
+    },
+
+    _openTodayPopover() {
+      if (this.calendarPopover) return;
+      const cells = this.calViewMode === 'week' ? this.calendarWeekCells : this.calendarCells;
+      const todayCell = cells.find(c => c && c.dateKey === this.todayKey);
+      if (todayCell && (todayCell.sessions.length > 0 || this.trackingMode)) {
+        this.calendarPopover = todayCell;
       }
     },
 
@@ -2660,6 +2957,14 @@ window.StudyApp = {
       this.calendarPopover = null;
     },
 
+    initCalWeek() {
+      const anchor = this.trackingMode ? this.todayKey : (this.startDate || this.todayKey);
+      const d   = new Date(anchor + 'T00:00:00Z');
+      const dow = (d.getUTCDay() + 6) % 7;  // 0=Mon … 6=Sun
+      this.currentCalWeekStart = new Date(d.getTime() - dow * 86400000);
+      this.calendarPopover = null;
+    },
+
     prevCalMonth() {
       const d = this.currentCalMonth;
       this.currentCalMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1));
@@ -2670,6 +2975,31 @@ window.StudyApp = {
       const d = this.currentCalMonth;
       this.currentCalMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
       this.calendarPopover = null;
+    },
+
+    prevCalWeek() {
+      const d = this.currentCalWeekStart;
+      this.currentCalWeekStart = new Date(d.getTime() - 7 * 86400000);
+      this.calendarPopover = null;
+    },
+
+    nextCalWeek() {
+      const d = this.currentCalWeekStart;
+      this.currentCalWeekStart = new Date(d.getTime() + 7 * 86400000);
+      this.calendarPopover = null;
+    },
+
+    switchCalView(mode) {
+      this.calViewMode = mode;
+      if (mode === 'week' && !this.currentCalWeekStart) this.initCalWeek();
+      this.calendarPopover = null;
+      this.$nextTick(() => this._openTodayPopover());
+    },
+
+    goToToday() {
+      if (this.calViewMode === 'month') this.initCalMonth();
+      else this.initCalWeek();
+      this.$nextTick(() => this._openTodayPopover());
     },
 
     calCellClick(cell) {
@@ -2698,6 +3028,16 @@ window.StudyApp = {
       return !!this.expandedTopicGroups[groupId];
     },
 
+    expandAllDays() {
+      const expanded = {};
+      this.studyDaysWithSessions.forEach(d => { expanded[d.dateKey] = true; });
+      this.expandedDays = expanded;
+    },
+
+    collapseAllDays() {
+      this.expandedDays = {};
+    },
+
     expandAllTopicGroups() {
       const expanded = {};
       this.groupedTopicSummaries.filter(g => g.type === 'group').forEach(g => { expanded[g.groupId] = true; });
@@ -2709,13 +3049,14 @@ window.StudyApp = {
     },
 
     dayEstimatedTime(sessions) {
-      const mockMins = this.settings.mockDuration || 90;
+      const mockMins    = this.settings.mockDuration || 90;
+      const sessionMins = this.planResult?.sessionLength || 20;
       let mins = 0;
       for (const s of sessions) {
         if (s.activityType === 'mock')          { mins += mockMins; }
-        else if (s.activityType !== 'postMock') { mins += this.settings.sessionDuration; }
+        else if (s.activityType !== 'postMock') { mins += sessionMins; }
       }
-      return mins > 0 ? `~${mins} min` : '';
+      return mins > 0 ? this.fmtMins(Math.round(mins)) : '';
     },
 
     fmtMins(mins) {
@@ -2726,19 +3067,10 @@ window.StudyApp = {
       return m > 0 ? `${h}h${m}` : `${h}h`;
     },
 
-    fmtSessionHint(n) {
-      if (n === 0) return 'off';
-      const mins = n * (this.settings.sessionDuration || 20);
-      const h = Math.floor(mins / 60);
-      const m = mins % 60;
-      const timeStr = h > 0 ? (m > 0 ? `${h}h${m}` : `${h}h`) : `${m}m`;
-      return `${n} session${n !== 1 ? 's' : ''} (${timeStr})`;
-    },
-
     adjustAllDays(delta) {
       for (const dow of ['mon','tue','wed','thu','fri','sat','sun']) {
         if (this.firstWeek[dow] > 0) {
-          this.firstWeek[dow] = Math.min(20, Math.max(0, this.firstWeek[dow] + delta));
+          this.firstWeek[dow] = Math.min(720, Math.max(0, this.firstWeek[dow] + delta));
         }
       }
     },
@@ -2856,14 +3188,14 @@ window.StudyApp = {
       StudyStorage.exportDayByDayCsv(
         this.hydratedCalendar,
         this.completionStatus,
-        this.settings.sessionDuration,
+        this.planResult?.sessionLength || 20,
       );
     },
 
     doExportTopicsCsv() {
       StudyStorage.exportTopicCsv(
         this.topicSummaries,
-        this.settings.sessionDuration,
+        this.planResult?.sessionLength || 20,
       );
     },
 
@@ -2885,6 +3217,7 @@ window.StudyApp = {
         intensityMultiplier: this.intensityMultiplier,
         rampMode:         this.rampMode,
         numMocks:         this.numMocks,
+        unitLength:       this.unitLength,
         settings:         this.settings,
         settingsSrText:   this.settingsSrText,
         completionStatus: this.completionStatus,
@@ -2916,9 +3249,10 @@ window.StudyApp = {
         const sumL = wdays.reduce((s, d) => s + (data.lastWeek[d]  || 0), 0);
         if (sumF > 0) this.intensityMultiplier = Math.max(1, parseFloat((sumL / sumF).toFixed(2)));
       }
-      if (data.rampMode)      this.rampMode      = data.rampMode;
-      if (data.numMocks)      this.numMocks      = data.numMocks;
-      if (data.examName)      this.examName      = data.examName;
+      if (data.rampMode)           this.rampMode    = data.rampMode;
+      if (data.numMocks)           this.numMocks    = data.numMocks;
+      if (data.unitLength != null) this.unitLength  = data.unitLength;
+      if (data.examName)           this.examName    = data.examName;
       if (data.topicInputMode) this.topicInputMode = data.topicInputMode;
       if (data.settings)      Object.assign(this.settings, data.settings);
       if (data.settingsSrText) this.settingsSrText = data.settingsSrText;
@@ -2998,7 +3332,30 @@ window.StudyApp = {
     },
 
     mergeSessions(sessions) {
-      return StudyStorage.mergeSessions(sessions);
+      if (!sessions.length) return [];
+      const out = [];
+      let cur = { ...sessions[0], count: 1 };
+      for (let i = 1; i < sessions.length; i++) {
+        const s = sessions[i];
+        if (s.topicTitle === cur.topicTitle && s.activityType === cur.activityType) {
+          cur.count++;
+          if (s.activityType === 'practice') cur._lastMcqNum = s._mcqNum;
+        } else {
+          out.push(cur);
+          cur = { ...s, count: 1 };
+        }
+      }
+      out.push(cur);
+      // Rewrite practice reason to show unit range when multiple were merged
+      for (const block of out) {
+        if (block.activityType === 'practice' && block.count > 1 && block._mcqNum != null) {
+          const first = block._mcqNum;
+          const last  = block._lastMcqNum ?? (first + block.count - 1);
+          const total = block.totalPN ?? '?';
+          block.reason = `Practice unit ${first}–${last} of ${total} for ${block.topicTitle}`;
+        }
+      }
+      return out;
     },
 
     // ── New Plan helper ─────────────────────────────────────────────────────
@@ -3007,6 +3364,7 @@ window.StudyApp = {
       this.trackingMode = false;
       this.activePlanId = null;
       this.trackedBlockedDays = [];
+      this.unitLength = 20;
       this.navigate('step1');
     },
 
@@ -3052,9 +3410,10 @@ window.StudyApp = {
         const sumL = wdays.reduce((s, d) => s + (data.lastWeek[d]  || 0), 0);
         if (sumF > 0) this.intensityMultiplier = Math.max(1, parseFloat((sumL / sumF).toFixed(2)));
       }
-      if (data.rampMode)      this.rampMode        = data.rampMode;
-      if (data.numMocks != null) this.numMocks     = data.numMocks;
-      if (data.examNameStr)   this.examName        = data.examNameStr;
+      if (data.rampMode)           this.rampMode    = data.rampMode;
+      if (data.numMocks != null)   this.numMocks   = data.numMocks;
+      if (data.unitLength != null) this.unitLength = data.unitLength;
+      if (data.examNameStr)        this.examName   = data.examNameStr;
       if (data.topicInputMode) this.topicInputMode = data.topicInputMode;
       if (data.settings)      Object.assign(this.settings, data.settings);
       if (data.settingsSrText) this.settingsSrText = data.settingsSrText;
@@ -3091,6 +3450,7 @@ window.StudyApp = {
       this.expandedDays = { ...this.expandedDays, [this.todayKey]: true };
 
       this.initCalMonth();
+      this.initCalWeek();
       this.activeTab = 'calendar';
       this.navigate('step4');
       this.$nextTick(() => this.renderChart());
@@ -3148,15 +3508,16 @@ window.StudyApp = {
             topics: advancedTopics.filter(t => !t.isGroup).map(t => ({
               id: t.id, name: t.title, difficulty: t.difficulty, startingState: t.startingState,
             })),
-            startDate:       new Date(this.todayKey + 'T00:00:00Z'),
-            examDate:        new Date(this.examDate  + 'T00:00:00Z'),
-            firstWeek:       this.firstWeek,
-            lastWeek:        this.lastWeekComputed,
-            rampMode:        this.rampMode,
-            numMocks:        this.numMocks,
-            srIntervals:     srIntervals.length ? srIntervals : [1,6,16,45,131],
-            postMockSameDay: this.settings.postMockSameDay !== false,
-            blockedDays:     this.trackedBlockedDays,
+            startDate:           new Date(this.todayKey + 'T00:00:00Z'),
+            examDate:            new Date(this.examDate  + 'T00:00:00Z'),
+            firstWeek:           this.firstWeek,
+            lastWeek:            this.lastWeekComputed,
+            rampMode:            this.rampMode,
+            numMocks:            this.numMocks,
+            srIntervals:         srIntervals.length ? srIntervals : [1,6,16,45,131],
+            postMockSameDay:     this.settings.postMockSameDay !== false,
+            blockedDays:         this.trackedBlockedDays,
+            forcedSessionLength: this.unitLength,
             settings: {
               lnTable:                this.settings.lnTable,
               pnTable:                this.settings.pnTable,
@@ -3168,7 +3529,7 @@ window.StudyApp = {
 
           const result = StudyPlanner.generatePlan(config);
           this._applyPlanResult(result);
-          this.activeTab = 'trajectory';
+          this.activeTab = 'calendar';
           this.$nextTick(() => {
             this.renderChart();
             this.expandedDays = { ...this.expandedDays, [this.todayKey]: true };
@@ -3252,6 +3613,7 @@ window.StudyApp = {
           intensityMultiplier: this.intensityMultiplier,
           rampMode:       this.rampMode,
           numMocks:       this.numMocks,
+          unitLength:     this.unitLength,
           settings:       this.settings,
           settingsSrText: this.settingsSrText,
           examNameStr:    this.examName,
@@ -3320,7 +3682,8 @@ window.StudyApp = {
     rampMode()            { this.$nextTick(() => this.drawScheduleChart()); },
     startDate()           { this.$nextTick(() => this.drawScheduleChart()); },
     examDate()            { this.$nextTick(() => this.drawScheduleChart()); },
-    'settings.sessionDuration'() { this.$nextTick(() => this.drawScheduleChart()); },
+    overflowEditSchedule(val) { if (val) this.$nextTick(() => this.drawScheduleChart()); },
+    overflowExpanded(val) { if (val && this.overflowEditSchedule) this.$nextTick(() => this.drawScheduleChart()); },
   },
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
