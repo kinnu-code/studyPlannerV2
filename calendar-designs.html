@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Calendar Design Options</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1e293b; padding: 32px 24px; }
+  h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 8px; color: #0f172a; }
+  .subtitle { font-size: .9rem; color: #64748b; margin-bottom: 40px; }
+  .design-block { background: #fff; border-radius: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.08), 0 4px 16px rgba(0,0,0,.06); padding: 28px 28px 32px; margin-bottom: 48px; }
+  .design-label { font-size: .72rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #94a3b8; margin-bottom: 4px; }
+  .design-title { font-size: 1.15rem; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+  .design-desc  { font-size: .85rem; color: #64748b; margin-bottom: 24px; line-height: 1.5; }
+  hr.divider { border: none; border-top: 1px solid #e2e8f0; margin: 0 0 28px; }
+
+  /* ─── shared nav ─── */
+  .cal-nav { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .cal-nav-btn { background: none; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px 12px; font-size: .82rem; cursor: pointer; color: #475569; }
+  .cal-nav-btn:hover { background: #f8fafc; }
+  .cal-month { font-weight: 700; font-size: 1rem; color: #0f172a; flex: 1; text-align: center; }
+
+
+  /* ══════════════════════════════════════════
+     DESIGN A — Clean grid with colour-coded dots + sidebar detail
+  ══════════════════════════════════════════ */
+  .da-wrap { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
+  .da-grid { flex: 1; }
+  .da-dow-row { display: grid; grid-template-columns: repeat(7,1fr); gap: 4px; margin-bottom: 6px; }
+  .da-dow { text-align: center; font-size: .7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .06em; padding: 4px 0; }
+  .da-cells { display: grid; grid-template-columns: repeat(7,1fr); gap: 4px; }
+  .da-cell { aspect-ratio: 1; border-radius: 10px; border: 1px solid transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; transition: background .12s, border-color .12s; padding: 4px; }
+  .da-cell:hover { background: #f1f5f9; border-color: #e2e8f0; }
+  .da-cell.empty { cursor: default; }
+  .da-cell.today { background: #eff6ff; border-color: #3b82f6; }
+  .da-cell.selected { background: #dbeafe; border-color: #2563eb; }
+  .da-cell .day-num { font-size: .78rem; font-weight: 600; color: #374151; line-height: 1; }
+  .da-cell.today .day-num { color: #1d4ed8; }
+  .da-cell .dots { display: flex; gap: 2px; flex-wrap: wrap; justify-content: center; }
+  .da-dot { width: 5px; height: 5px; border-radius: 50%; }
+  .da-cell .time-label { font-size: .6rem; color: #94a3b8; }
+
+  /* sidebar */
+  .da-detail { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; background: #f8fafc; }
+  .da-detail-date { font-weight: 700; font-size: .95rem; color: #0f172a; margin-bottom: 4px; }
+  .da-detail-meta { font-size: .78rem; color: #64748b; margin-bottom: 14px; }
+  .da-activity { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+  .da-activity:last-child { border-bottom: none; }
+  .da-pill { font-size: .68rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; flex-shrink: 0; margin-top: 1px; }
+  .pill-learn    { background: #dbeafe; color: #1d4ed8; }
+  .pill-practice { background: #fef3c7; color: #92400e; }
+  .pill-review   { background: #dcfce7; color: #166534; }
+  .da-act-text { font-size: .82rem; color: #374151; line-height: 1.4; }
+  .da-act-reason { font-size: .74rem; color: #94a3b8; }
+  .da-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+  .da-legend-item { display: flex; align-items: center; gap: 5px; font-size: .73rem; color: #64748b; }
+
+
+  /* ══════════════════════════════════════════
+     DESIGN B — Horizontal week strip + inline detail row
+  ══════════════════════════════════════════ */
+  .db-wrap { }
+  .db-week-row { display: grid; grid-template-columns: repeat(7,1fr); gap: 6px; margin-bottom: 6px; }
+  .db-dow { text-align: center; font-size: .7rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: .06em; padding: 3px 0; }
+  .db-cell { border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; padding: 8px 6px 6px; cursor: pointer; transition: border-color .12s, box-shadow .12s; min-height: 72px; display: flex; flex-direction: column; gap: 4px; }
+  .db-cell:hover { border-color: #93c5fd; box-shadow: 0 0 0 2px #dbeafe; }
+  .db-cell.today { border-color: #3b82f6; background: #eff6ff; }
+  .db-cell.selected { border-color: #2563eb; box-shadow: 0 0 0 2px #bfdbfe; }
+  .db-cell.empty { border-color: transparent; background: transparent; cursor: default; }
+  .db-cell.empty:hover { box-shadow: none; }
+  .db-day-num { font-size: .78rem; font-weight: 700; color: #374151; }
+  .db-cell.today .db-day-num { color: #1d4ed8; }
+  .db-cell.no-study { }
+  .db-time { font-size: .68rem; font-weight: 600; color: #475569; }
+  .db-bar-wrap { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
+  .db-bar { height: 4px; border-radius: 2px; }
+
+  /* inline expanded detail */
+  .db-detail-row { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; margin-bottom: 6px; display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; }
+  .db-detail-date-col { text-align: center; min-width: 52px; }
+  .db-detail-day-name { font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: #94a3b8; font-weight: 600; }
+  .db-detail-day-num  { font-size: 1.6rem; font-weight: 800; color: #1d4ed8; line-height: 1; }
+  .db-detail-activities { display: flex; flex-direction: column; gap: 6px; }
+  .db-act-row { display: flex; align-items: center; gap: 8px; }
+  .db-act-text { font-size: .82rem; color: #374151; }
+  .db-act-count { font-size: .72rem; color: #94a3b8; }
+
+
+  /* ══════════════════════════════════════════
+     DESIGN C — Compact agenda list (no grid) + mini sparkline
+  ══════════════════════════════════════════ */
+  .dc-wrap { display: grid; grid-template-columns: 1fr 260px; gap: 24px; align-items: start; }
+  .dc-agenda { display: flex; flex-direction: column; gap: 2px; }
+  .dc-week-header { font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; padding: 10px 0 4px; border-bottom: 1px solid #f1f5f9; margin-bottom: 4px; }
+  .dc-day { display: flex; gap: 12px; align-items: stretch; padding: 6px 8px; border-radius: 8px; cursor: pointer; transition: background .1s; }
+  .dc-day:hover { background: #f8fafc; }
+  .dc-day.today { background: #eff6ff; }
+  .dc-day.selected { background: #dbeafe; }
+  .dc-day-date { width: 48px; flex-shrink: 0; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .dc-day-name { font-size: .65rem; font-weight: 600; text-transform: uppercase; color: #94a3b8; letter-spacing: .06em; }
+  .dc-day-num  { font-size: 1.05rem; font-weight: 700; color: #374151; line-height: 1.1; }
+  .dc-day.today .dc-day-num { color: #2563eb; }
+  .dc-day-bar  { display: flex; align-items: center; gap: 4px; flex: 1; }
+  .dc-seg { height: 20px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: .62rem; font-weight: 700; color: rgba(255,255,255,.85); padding: 0 4px; white-space: nowrap; overflow: hidden; }
+  .dc-day-time { font-size: .72rem; color: #94a3b8; min-width: 36px; text-align: right; align-self: center; }
+  .dc-day.off .dc-day-num { color: #cbd5e1; }
+  .dc-day.off .dc-day-name { color: #cbd5e1; }
+
+  /* sidebar sparkline + detail */
+  .dc-sidebar { }
+  .dc-detail-card { border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+  .dc-detail-header { background: #1e3a5f; color: #fff; padding: 12px 16px; }
+  .dc-detail-title  { font-weight: 700; font-size: .95rem; }
+  .dc-detail-sub    { font-size: .75rem; opacity: .7; margin-top: 2px; }
+  .dc-detail-body   { padding: 14px 16px; background: #fff; display: flex; flex-direction: column; gap: 8px; }
+  .dc-act { display: flex; align-items: flex-start; gap: 8px; }
+  .dc-act-pill { font-size: .68rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── shared colour variables ── */
+  :root {
+    --c-learn:    #3b82f6;
+    --c-practice: #f59e0b;
+    --c-review:   #22c55e;
+    --c-mock:     #8b5cf6;
+  }
+</style>
+</head>
+<body>
+
+<h1>Calendar View — Design Options</h1>
+<p class="subtitle">Three distinct approaches. Choose one (or mix elements) to implement.</p>
+
+<!-- ═══════════════════════════════════════════════════════
+     DESIGN A
+════════════════════════════════════════════════════════ -->
+<div class="design-block">
+  <div class="design-label">Option A</div>
+  <div class="design-title">Grid calendar + persistent sidebar detail</div>
+  <div class="design-desc">Classic month grid. Today is always highlighted in blue. Colour dots summarise activity types per day. A fixed detail panel on the right shows the selected day's activities — no pop-up, always visible. Clean and information-dense.</div>
+  <hr class="divider" />
+
+  <div class="da-wrap">
+    <!-- Grid -->
+    <div class="da-grid">
+      <div class="cal-nav">
+        <button class="cal-nav-btn">← Prev</button>
+        <span class="cal-month">May 2026</span>
+        <button class="cal-nav-btn">Next →</button>
+      </div>
+      <div class="da-dow-row">
+        <div class="da-dow">Mon</div><div class="da-dow">Tue</div><div class="da-dow">Wed</div>
+        <div class="da-dow">Thu</div><div class="da-dow">Fri</div><div class="da-dow">Sat</div><div class="da-dow">Sun</div>
+      </div>
+      <div class="da-cells">
+        <!-- row 1 (padding) -->
+        <div class="da-cell empty"></div>
+        <div class="da-cell empty"></div>
+        <div class="da-cell empty"></div>
+        <!-- 1 Thu -->
+        <div class="da-cell"><div class="da-day-num">1</div><div class="da-dots"><div class="da-dot" style="background:var(--c-learn)"></div><div class="da-dot" style="background:var(--c-practice)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">2</div><div class="da-dots"><div class="da-dot" style="background:var(--c-learn)"></div><div class="da-dot" style="background:var(--c-review)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num" style="color:#94a3b8">3</div></div>
+        <div class="da-cell"><div class="da-day-num" style="color:#94a3b8">4</div></div>
+        <!-- row 2 -->
+        <div class="da-cell"><div class="da-day-num">5</div><div class="da-dots"><div class="da-dot" style="background:var(--c-learn)"></div><div class="da-dot" style="background:var(--c-practice)"></div><div class="da-dot" style="background:var(--c-review)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">6</div><div class="da-dots"><div class="da-dot" style="background:var(--c-practice)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">7</div><div class="da-dots"><div class="da-dot" style="background:var(--c-learn)"></div><div class="da-dot" style="background:var(--c-review)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">8</div><div class="da-dots"><div class="da-dot" style="background:var(--c-practice)"></div><div class="da-dot" style="background:var(--c-review)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">9</div><div class="da-dots"><div class="da-dot" style="background:var(--c-learn)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num" style="color:#94a3b8">10</div></div>
+        <div class="da-cell"><div class="da-day-num" style="color:#94a3b8">11</div></div>
+        <!-- row 3 -->
+        <div class="da-cell"><div class="da-day-num">12</div><div class="da-dots"><div class="da-dot" style="background:var(--c-review)"></div><div class="da-dot" style="background:var(--c-practice)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">13</div><div class="da-dots"><div class="da-dot" style="background:var(--c-learn)"></div><div class="da-dot" style="background:var(--c-practice)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">14</div><div class="da-dots"><div class="da-dot" style="background:var(--c-practice)"></div><div class="da-dot" style="background:var(--c-review)"></div></div></div>
+        <!-- TODAY -->
+        <div class="da-cell today selected"><div class="da-day-num">15</div><div class="da-dots"><div class="da-dot" style="background:var(--c-learn)"></div><div class="da-dot" style="background:var(--c-practice)"></div><div class="da-dot" style="background:var(--c-review)"></div></div><div class="da-time-label">1h20</div></div>
+        <div class="da-cell"><div class="da-day-num">16</div><div class="da-dots"><div class="da-dot" style="background:var(--c-review)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num" style="color:#94a3b8">17</div></div>
+        <div class="da-cell"><div class="da-day-num" style="color:#94a3b8">18</div></div>
+        <!-- row 4 -->
+        <div class="da-cell"><div class="da-day-num">19</div><div class="da-dots"><div class="da-dot" style="background:var(--c-learn)"></div><div class="da-dot" style="background:var(--c-practice)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">20</div><div class="da-dots"><div class="da-dot" style="background:var(--c-practice)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">21</div><div class="da-dots"><div class="da-dot" style="background:var(--c-mock)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">22</div><div class="da-dots"><div class="da-dot" style="background:var(--c-review)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">23</div><div class="da-dots"><div class="da-dot" style="background:var(--c-learn)"></div><div class="da-dot" style="background:var(--c-review)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num" style="color:#94a3b8">24</div></div>
+        <div class="da-cell"><div class="da-day-num" style="color:#94a3b8">25</div></div>
+        <!-- row 5 -->
+        <div class="da-cell"><div class="da-day-num">26</div><div class="da-dots"><div class="da-dot" style="background:var(--c-practice)"></div><div class="da-dot" style="background:var(--c-review)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">27</div><div class="da-dots"><div class="da-dot" style="background:var(--c-learn)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">28</div><div class="da-dots"><div class="da-dot" style="background:var(--c-review)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">29</div><div class="da-dots"><div class="da-dot" style="background:var(--c-learn)"></div><div class="da-dot" style="background:var(--c-practice)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">30</div><div class="da-dots"><div class="da-dot" style="background:var(--c-review)"></div></div></div>
+        <div class="da-cell"><div class="da-day-num">31</div><div class="da-dots"><div class="da-dot" style="background:var(--c-practice)"></div></div></div>
+        <div class="da-cell empty"></div>
+      </div>
+      <!-- legend -->
+      <div class="da-legend" style="margin-top:14px">
+        <div class="da-legend-item"><div class="da-dot" style="background:var(--c-learn)"></div> Learning</div>
+        <div class="da-legend-item"><div class="da-dot" style="background:var(--c-practice)"></div> Practice</div>
+        <div class="da-legend-item"><div class="da-dot" style="background:var(--c-review)"></div> Review</div>
+        <div class="da-legend-item"><div class="da-dot" style="background:var(--c-mock)"></div> Mock</div>
+      </div>
+    </div>
+
+    <!-- Sidebar detail (today) -->
+    <div>
+      <div class="da-detail">
+        <div class="da-detail-date">Thursday 15 May</div>
+        <div class="da-detail-meta">4 units · 1h20</div>
+        <div class="da-activity">
+          <span class="da-pill pill-learn">Learn</span>
+          <div><div class="da-act-text">Equity Valuation</div><div class="da-act-reason">First learning unit</div></div>
+        </div>
+        <div class="da-activity">
+          <span class="da-pill pill-practice">Practice</span>
+          <div><div class="da-act-text">Fixed Income</div><div class="da-act-reason">Practice unit 1 of 4</div></div>
+        </div>
+        <div class="da-activity">
+          <span class="da-pill pill-practice">Practice</span>
+          <div><div class="da-act-text">Fixed Income</div><div class="da-act-reason">Practice unit 2 of 4</div></div>
+        </div>
+        <div class="da-activity">
+          <span class="da-pill pill-review">Review</span>
+          <div><div class="da-act-text">Financial Reporting</div><div class="da-act-reason">Spaced review (interval 2)</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     DESIGN B
+════════════════════════════════════════════════════════ -->
+<div class="design-block">
+  <div class="design-label">Option B</div>
+  <div class="design-title">Card-per-day grid with inline activity bars + expandable detail</div>
+  <div class="design-desc">Each day is a card showing a time label and coloured bars representing activity types. Clicking a day expands an inline detail row directly below that week row. More visual weight per cell — good for seeing workload at a glance without dots.</div>
+  <hr class="divider" />
+
+  <div class="db-wrap">
+    <div class="cal-nav">
+      <button class="cal-nav-btn">← Prev</button>
+      <span class="cal-month">May 2026</span>
+      <button class="cal-nav-btn">Next →</button>
+    </div>
+    <div class="db-week-row">
+      <div class="db-dow">Mon</div><div class="db-dow">Tue</div><div class="db-dow">Wed</div>
+      <div class="db-dow">Thu</div><div class="db-dow">Fri</div><div class="db-dow">Sat</div><div class="db-dow">Sun</div>
+    </div>
+
+    <!-- Week 1 -->
+    <div class="db-week-row">
+      <div class="db-cell empty"></div><div class="db-cell empty"></div><div class="db-cell empty"></div>
+      <div class="db-cell"><div class="db-day-num">1</div><div class="db-time">1h</div><div class="db-bar-wrap"><div class="db-bar" style="background:var(--c-learn);width:60%"></div><div class="db-bar" style="background:var(--c-practice);width:40%"></div></div></div>
+      <div class="db-cell"><div class="db-day-num">2</div><div class="db-time">40min</div><div class="db-bar-wrap"><div class="db-bar" style="background:var(--c-learn);width:50%"></div><div class="db-bar" style="background:var(--c-review);width:50%"></div></div></div>
+      <div class="db-cell no-study"><div class="db-day-num" style="color:#94a3b8">3</div></div>
+      <div class="db-cell no-study"><div class="db-day-num" style="color:#94a3b8">4</div></div>
+    </div>
+
+    <!-- Week 2 — today expanded -->
+    <div class="db-week-row">
+      <div class="db-cell"><div class="db-day-num">12</div><div class="db-time">40min</div><div class="db-bar-wrap"><div class="db-bar" style="background:var(--c-review);width:100%"></div></div></div>
+      <div class="db-cell"><div class="db-day-num">13</div><div class="db-time">1h</div><div class="db-bar-wrap"><div class="db-bar" style="background:var(--c-learn);width:50%"></div><div class="db-bar" style="background:var(--c-practice);width:50%"></div></div></div>
+      <div class="db-cell"><div class="db-day-num">14</div><div class="db-time">40min</div><div class="db-bar-wrap"><div class="db-bar" style="background:var(--c-practice);width:60%"></div><div class="db-bar" style="background:var(--c-review);width:40%"></div></div></div>
+      <div class="db-cell today selected"><div class="db-day-num">15 ★</div><div class="db-time" style="color:#2563eb;font-weight:700">1h20</div><div class="db-bar-wrap"><div class="db-bar" style="background:var(--c-learn);width:25%"></div><div class="db-bar" style="background:var(--c-practice);width:50%"></div><div class="db-bar" style="background:var(--c-review);width:25%"></div></div></div>
+      <div class="db-cell"><div class="db-day-num">16</div><div class="db-time">20min</div><div class="db-bar-wrap"><div class="db-bar" style="background:var(--c-review);width:100%"></div></div></div>
+      <div class="db-cell no-study"><div class="db-day-num" style="color:#94a3b8">17</div></div>
+      <div class="db-cell no-study"><div class="db-day-num" style="color:#94a3b8">18</div></div>
+    </div>
+    <!-- Inline detail for 15 May -->
+    <div class="db-detail-row" style="margin: -2px 0 6px">
+      <div class="db-detail-date-col">
+        <div class="db-detail-day-name">Thu</div>
+        <div class="db-detail-day-num">15</div>
+      </div>
+      <div class="db-detail-activities">
+        <div class="db-act-row"><span class="da-pill pill-learn">Learn</span><span class="db-act-text">Equity Valuation</span><span class="db-act-count">First learning unit</span></div>
+        <div class="db-act-row"><span class="da-pill pill-practice">Practice</span><span class="db-act-text">Fixed Income</span><span class="db-act-count">Units 1–2 of 4</span></div>
+        <div class="db-act-row"><span class="da-pill pill-review">Review</span><span class="db-act-text">Financial Reporting</span><span class="db-act-count">Interval 2</span></div>
+      </div>
+    </div>
+
+    <!-- Week 3 -->
+    <div class="db-week-row">
+      <div class="db-cell"><div class="db-day-num">19</div><div class="db-time">1h</div><div class="db-bar-wrap"><div class="db-bar" style="background:var(--c-learn);width:60%"></div><div class="db-bar" style="background:var(--c-practice);width:40%"></div></div></div>
+      <div class="db-cell"><div class="db-day-num">20</div><div class="db-time">20min</div><div class="db-bar-wrap"><div class="db-bar" style="background:var(--c-practice);width:100%"></div></div></div>
+      <div class="db-cell"><div class="db-day-num">21</div><div class="db-time">Mock</div><div class="db-bar-wrap"><div class="db-bar" style="background:var(--c-mock);width:100%"></div></div></div>
+      <div class="db-cell"><div class="db-day-num">22</div><div class="db-time">20min</div><div class="db-bar-wrap"><div class="db-bar" style="background:var(--c-review);width:100%"></div></div></div>
+      <div class="db-cell"><div class="db-day-num">23</div><div class="db-time">40min</div><div class="db-bar-wrap"><div class="db-bar" style="background:var(--c-learn);width:50%"></div><div class="db-bar" style="background:var(--c-review);width:50%"></div></div></div>
+      <div class="db-cell no-study"><div class="db-day-num" style="color:#94a3b8">24</div></div>
+      <div class="db-cell no-study"><div class="db-day-num" style="color:#94a3b8">25</div></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     DESIGN C
+════════════════════════════════════════════════════════ -->
+<div class="design-block">
+  <div class="design-label">Option C</div>
+  <div class="design-title">Agenda list with proportional activity bars + detail panel</div>
+  <div class="design-desc">Drops the grid in favour of a scrollable week-grouped list. Each day shows a proportional coloured bar split by activity type, plus a time estimate. Selecting a day populates the right-hand detail card. Best for longer study periods — no tiny cells — and very easy to scan what type of work is heaviest each day.</div>
+  <hr class="divider" />
+
+  <div class="dc-wrap">
+    <!-- Agenda -->
+    <div class="dc-agenda">
+      <!-- Week label -->
+      <div class="dc-week-header">Week of 11 May</div>
+
+      <div class="dc-day"><div class="dc-day-date"><div class="dc-day-name">Mon</div><div class="dc-day-num">11</div></div><div class="dc-day-bar"><div class="dc-seg" style="background:var(--c-review);width:50%">Review</div></div><div class="dc-day-time">20min</div></div>
+      <div class="dc-day"><div class="dc-day-date"><div class="dc-day-name">Tue</div><div class="dc-day-num">12</div></div><div class="dc-day-bar"><div class="dc-seg" style="background:var(--c-review);width:33%">Rev</div><div class="dc-seg" style="background:var(--c-practice);width:67%">Practice</div></div><div class="dc-day-time">40min</div></div>
+      <div class="dc-day"><div class="dc-day-date"><div class="dc-day-name">Wed</div><div class="dc-day-num">13</div></div><div class="dc-day-bar"><div class="dc-seg" style="background:var(--c-learn);width:50%">Learn</div><div class="dc-seg" style="background:var(--c-practice);width:50%">Practice</div></div><div class="dc-day-time">1h</div></div>
+      <div class="dc-day"><div class="dc-day-date"><div class="dc-day-name">Thu</div><div class="dc-day-num">14</div></div><div class="dc-day-bar"><div class="dc-seg" style="background:var(--c-practice);width:60%">Practice</div><div class="dc-seg" style="background:var(--c-review);width:40%">Rev</div></div><div class="dc-day-time">40min</div></div>
+      <!-- TODAY -->
+      <div class="dc-day today selected"><div class="dc-day-date"><div class="dc-day-name" style="color:#2563eb">Fri</div><div class="dc-day-num" style="color:#2563eb">15</div></div><div class="dc-day-bar"><div class="dc-seg" style="background:var(--c-learn);width:25%">Lrn</div><div class="dc-seg" style="background:var(--c-practice);width:50%">Practice ×2</div><div class="dc-seg" style="background:var(--c-review);width:25%">Rev</div></div><div class="dc-day-time" style="color:#2563eb;font-weight:700">1h20</div></div>
+      <div class="dc-day off"><div class="dc-day-date"><div class="dc-day-name">Sat</div><div class="dc-day-num">16</div></div><div class="dc-day-bar" style="color:#e2e8f0;font-size:.7rem;align-items:center">— off —</div><div class="dc-day-time"></div></div>
+      <div class="dc-day off"><div class="dc-day-date"><div class="dc-day-name">Sun</div><div class="dc-day-num">17</div></div><div class="dc-day-bar" style="color:#e2e8f0;font-size:.7rem;align-items:center">— off —</div><div class="dc-day-time"></div></div>
+
+      <div class="dc-week-header">Week of 18 May</div>
+      <div class="dc-day"><div class="dc-day-date"><div class="dc-day-name">Mon</div><div class="dc-day-num">18</div></div><div class="dc-day-bar"><div class="dc-seg" style="background:var(--c-learn);width:60%">Learn</div><div class="dc-seg" style="background:var(--c-review);width:40%">Rev</div></div><div class="dc-day-time">40min</div></div>
+      <div class="dc-day"><div class="dc-day-date"><div class="dc-day-name">Tue</div><div class="dc-day-num">19</div></div><div class="dc-day-bar"><div class="dc-seg" style="background:var(--c-learn);width:50%">Learn</div><div class="dc-seg" style="background:var(--c-practice);width:50%">Practice</div></div><div class="dc-day-time">1h</div></div>
+      <div class="dc-day"><div class="dc-day-date"><div class="dc-day-name">Wed</div><div class="dc-day-num">20</div></div><div class="dc-day-bar"><div class="dc-seg" style="background:var(--c-mock);width:100%">Mock Exam 1</div></div><div class="dc-day-time">3h</div></div>
+    </div>
+
+    <!-- Detail panel -->
+    <div class="dc-sidebar">
+      <div class="dc-detail-card">
+        <div class="dc-detail-header">
+          <div class="dc-detail-title">Friday 15 May — Today</div>
+          <div class="dc-detail-sub">4 units · 1h20</div>
+        </div>
+        <div class="dc-detail-body">
+          <div class="dc-act"><span class="dc-act-pill pill-learn">Learn</span><div><div class="da-act-text">Equity Valuation</div><div class="da-act-reason">First learning unit</div></div></div>
+          <div class="dc-act"><span class="dc-act-pill pill-practice">Practice</span><div><div class="da-act-text">Fixed Income</div><div class="da-act-reason">Units 1–2 of 4</div></div></div>
+          <div class="dc-act"><span class="dc-act-pill pill-review">Review</span><div><div class="da-act-text">Financial Reporting</div><div class="da-act-reason">Spaced review (interval 2)</div></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
