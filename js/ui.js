@@ -2036,37 +2036,57 @@ window.StudyApp = {
 
     calendarWeekCells() {
       if (!this.currentCalWeekStart) return [];
-      const DOT_COLORS  = { learn: '#3b82f6', practice: '#f59e0b', review: '#16a34a', mock: '#7c3aed', postMock: '#c084fc' };
-      const SEG_LABELS  = { learn: 'Learn', practice: 'Practice', review: 'Review', mock: 'Mock', postMock: 'Post-mock' };
-      const DOW_LABELS  = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const DOT_COLORS = { learn: '#3b82f6', practice: '#f59e0b', review: '#16a34a', mock: '#7c3aed', postMock: '#c084fc' };
+      const SEG_LABELS = { learn: 'Learn', practice: 'Practice', review: 'Review', mock: 'Mock', postMock: 'Post-mock' };
+      const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const unitMins   = this.unitLength || 20;
+      const mockMins   = (this.settings && this.settings.mockDuration) || 90;
+
       const dayMap = {};
       for (const day of this.hydratedCalendar) {
         const dk = day.date instanceof Date ? day.date.toISOString().slice(0, 10) : day.date;
         dayMap[dk] = day;
       }
-      let maxSessions = 0;
+
+      // First pass: build cells and compute dayMins (excluding postMock from time sum)
       const cells = [];
       for (let i = 0; i < 7; i++) {
-        const date = new Date(this.currentCalWeekStart.getTime() + i * 86400000);
-        const dk   = date.toISOString().slice(0, 10);
-        const hydr = dayMap[dk];
-        const sessions = hydr ? hydr.sessions : [];
-        if (sessions.length > maxSessions) maxSessions = sessions.length;
-        cells.push({ date, dateKey: dk, day: date.getUTCDate(), dow: DOW_LABELS[i], sessions, isStudyDay: sessions.length > 0 });
+        const date     = new Date(this.currentCalWeekStart.getTime() + i * 86400000);
+        const dk       = date.toISOString().slice(0, 10);
+        const sessions = (dayMap[dk] || {}).sessions || [];
+        const hasPostMock = sessions.some(s => s.activityType === 'postMock');
+        let dayMins = 0;
+        for (const s of sessions) {
+          if (s.activityType === 'postMock') continue;
+          dayMins += s.activityType === 'mock' ? mockMins : unitMins;
+        }
+        cells.push({ date, dateKey: dk, day: date.getUTCDate(), dow: DOW_LABELS[i],
+                     sessions, isStudyDay: sessions.length > 0, hasPostMock, dayMins });
       }
+
+      // Scale reference: longest non-post-mock day
+      const maxMins = Math.max(...cells.filter(c => !c.hasPostMock).map(c => c.dayMins), 1);
+
+      // Second pass: compute relWidth and activityBars
       for (const cell of cells) {
-        const typeCount = {};
-        for (const s of cell.sessions) typeCount[s.activityType] = (typeCount[s.activityType] || 0) + 1;
-        const total = cell.sessions.length;
-        cell.relWidth    = maxSessions > 0 ? (total / maxSessions) * 100 : 0;
-        cell.activityBars = total > 0
-          ? Object.entries(typeCount).map(([type, n]) => ({
-              type,
-              color: DOT_COLORS[type] || '#999',
-              label: SEG_LABELS[type] || type,
-              pct: (n / total) * 100,
-            }))
-          : [];
+        if (cell.hasPostMock) {
+          // Post-mock is a full-day activity — always fills 100%
+          cell.relWidth    = 100;
+          cell.activityBars = [{ type: 'postMock', color: DOT_COLORS.postMock, label: 'full day activity', pct: 100 }];
+        } else {
+          const typeMins = {};
+          for (const s of cell.sessions) {
+            const m = s.activityType === 'mock' ? mockMins : unitMins;
+            typeMins[s.activityType] = (typeMins[s.activityType] || 0) + m;
+          }
+          cell.relWidth    = cell.dayMins > 0 ? Math.min(100, (cell.dayMins / maxMins) * 100) : 0;
+          cell.activityBars = cell.dayMins > 0
+            ? Object.entries(typeMins).map(([type, mins]) => ({
+                type, color: DOT_COLORS[type] || '#999', label: SEG_LABELS[type] || type,
+                pct: (mins / cell.dayMins) * 100,
+              }))
+            : [];
+        }
       }
       return cells;
     },
