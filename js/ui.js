@@ -3026,10 +3026,47 @@ window.StudyApp = {
     },
 
     switchCalView(mode) {
+      const prevKey = this.calendarPopover?.dateKey || null;
       this.calViewMode = mode;
-      if (mode === 'week' && !this.currentCalWeekStart) this.initCalWeek();
-      this.calendarPopover = null;
-      this.$nextTick(() => this._openTodayPopover());
+
+      if (prevKey) {
+        // A day was selected — navigate to show it in the new view, re-select it
+        const d = new Date(prevKey + 'T00:00:00Z');
+        if (mode === 'week') {
+          const dow = (d.getUTCDay() + 6) % 7;
+          this.currentCalWeekStart = new Date(d.getTime() - dow * 86400000);
+        } else {
+          this.currentCalMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+        }
+        this.calendarPopover = null;
+        this.$nextTick(() => {
+          const cells = mode === 'week' ? this.calendarWeekCells : this.calendarCells;
+          const cell  = cells.find(c => c && c.dateKey === prevKey);
+          this.calendarPopover = cell || null;
+        });
+      } else {
+        // No selection — navigate contextually
+        if (mode === 'week') {
+          // First week of the current month
+          const m = this.currentCalMonth;
+          if (m) {
+            const first = new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth(), 1));
+            const dow   = (first.getUTCDay() + 6) % 7;
+            this.currentCalWeekStart = new Date(first.getTime() - dow * 86400000);
+          } else {
+            this.initCalWeek();
+          }
+        } else {
+          // Month containing the current week's Monday
+          const w = this.currentCalWeekStart;
+          if (w) {
+            this.currentCalMonth = new Date(Date.UTC(w.getUTCFullYear(), w.getUTCMonth(), 1));
+          } else {
+            this.initCalMonth();
+          }
+        }
+        this.calendarPopover = null;
+      }
     },
 
     isPast(dateKey) {
