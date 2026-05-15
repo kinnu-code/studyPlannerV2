@@ -263,33 +263,22 @@
   }
 
   // ─── mockPlacementValid ───────────────────────────────────────────────────
-  // Returns true if the first mock is strictly after its eligibility date.
-  // (Last mock is anchored to exam date, not practice-completion — no check needed for it.)
+  // Mock placement no longer has eligibility constraints — always valid.
 
   function mockPlacementValid(mocks, eligibility) {
-    if (!mocks.length) return true;
-    const firstMock = mocks.find(m => m.type === 'mock' && m.mockNumber === 1);
-    if (firstMock && eligibility.firstMockEligibleDate) {
-      if (firstMock.date.getTime() <= eligibility.firstMockEligibleDate.getTime()) return false;
-    }
     return true;
   }
 
   // ─── placeMocks ────────────────────────────────────────────────────────────
-  // Placement rules:
-  //   First mock  — first study day AFTER all topics have ≥1 practice session done.
-  //   Last mock   — study day on or before (examDate − 3 days).
-  //   Middle mocks — evenly distributed between first and last.
+  // Placement rules (no eligibility constraints):
+  //   Last mock  — last study day on or before (examDate − 3 days).
+  //   Earlier mocks — each one exactly 7 days before the next, working backward.
   //   Manual dates (fixedMockDates: { [mockNumber]: Date }) override auto dates for those mocks only.
 
   function placeMocks(calendar, eligibility, numMocks, postMockSameDay = true, fixedMockDates = null, examDate) {
     if (numMocks === 0) return [];
 
     const studyDays = calendar.filter(d => d.totalSessions > 0);
-
-    function firstStudyDayAfter(targetDate) {
-      return studyDays.find(d => d.date.getTime() > targetDate.getTime()) || null;
-    }
 
     function firstStudyDayOnOrAfter(targetDate) {
       return studyDays.find(d => d.date.getTime() >= targetDate.getTime()) || null;
@@ -300,50 +289,28 @@
       return candidates.length ? candidates[candidates.length - 1] : null;
     }
 
-    // Manual overrides: { [mockNumber]: Date } — only those mock numbers are pinned.
     const manualDates = fixedMockDates || {};
 
-    const { firstMockEligibleDate } = eligibility;
-    if (!firstMockEligibleDate) return [];
+    // Last mock anchor: last study day on or before examDate − 3 days
+    const lastTarget = examDate ? new Date(examDate.getTime() - 3 * MS_PER_DAY) : null;
+    const lastAnchor = lastTarget
+      ? lastStudyDayOnOrBefore(lastTarget)
+      : studyDays[studyDays.length - 1];
+    if (!lastAnchor) return [];
 
-    const firstMockDay = firstStudyDayAfter(firstMockEligibleDate);
-    if (!firstMockDay) return [];
-
-    // Last mock anchor: 3 days before exam
-    const lastTarget  = examDate ? new Date(examDate.getTime() - 3 * MS_PER_DAY) : null;
-    const lastMockDay = lastTarget ? lastStudyDayOnOrBefore(lastTarget) : null;
-
-    // Build auto sequence: first, evenly-spaced middles, last
-    let autoDesiredDates = [];
-    if (numMocks === 1) {
-      autoDesiredDates = [firstMockDay.date];
-    } else {
-      const t0 = firstMockDay.date.getTime();
-      const t1 = (lastMockDay && lastMockDay.date.getTime() > t0)
-        ? lastMockDay.date.getTime()
-        : t0;
-
-      autoDesiredDates.push(firstMockDay.date);
-
-      const middleCount = numMocks - 2;
-      for (let i = 1; i <= middleCount; i++) {
-        const targetMs = t0 + (t1 - t0) * (i / (middleCount + 1));
-        const nearest  = firstStudyDayOnOrAfter(new Date(targetMs));
-        if (nearest) autoDesiredDates.push(nearest.date);
-      }
-
-      autoDesiredDates.push(lastMockDay ? lastMockDay.date : firstMockDay.date);
-    }
-
-    // Apply manual overrides for specific mock numbers
-    const desiredDates = autoDesiredDates.map((autoDate, i) => {
-      const mockNum = i + 1;
+    // Build desired dates: mock N = lastAnchor, mock N-k = lastAnchor − k*7 days
+    const desiredDates = [];
+    for (let mockNum = 1; mockNum <= numMocks; mockNum++) {
+      const weeksBack = numMocks - mockNum;   // 0 for last mock, 1 for penultimate, etc.
       if (manualDates[mockNum]) {
         const day = firstStudyDayOnOrAfter(manualDates[mockNum]);
-        return day ? day.date : autoDate;
+        desiredDates.push(day ? day.date : cloneDate(lastAnchor.date));
+      } else {
+        const targetMs = lastAnchor.date.getTime() - weeksBack * 7 * MS_PER_DAY;
+        const day      = lastStudyDayOnOrBefore(new Date(targetMs));
+        desiredDates.push(day ? day.date : cloneDate(lastAnchor.date));
       }
-      return autoDate;
-    });
+    }
 
     // Deduplicate: bump any collision to the next available study day
     const usedKeys = new Set();
