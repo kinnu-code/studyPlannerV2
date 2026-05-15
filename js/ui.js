@@ -1063,6 +1063,7 @@ window.StudyApp = {
                :class="{
                  'day-block--today':   day.dateKey === todayKey,
                  'day-block--blocked': isBlockedDay(day.dateKey),
+                 'day-block--past':    isPast(day.dateKey),
                }">
             <div class="day-header" @click="toggleDay(day.dateKey)" style="cursor:pointer;user-select:none">
               <span class="day-expand-icon">{{ isDayExpanded(day.dateKey) ? '▼' : '▶' }}</span>
@@ -1174,7 +1175,7 @@ window.StudyApp = {
                     <td style="padding-left:20px">{{ ts.title }}</td>
                     <td>
                       <div class="activity-list">
-                        <div class="activity-entry" v-for="(act, ai) in ts.activities" :key="ai">
+                        <div class="activity-entry" :class="{ 'activity-entry--past': isPastDate(act.date) }" v-for="(act, ai) in ts.activities" :key="ai">
                           <span class="date">{{ formatDate(act.date) }}</span>
                           <span class="type">
                             <span class="activity-pill" :class="pillClass(act.activityType)">{{ activityLabel(act.activityType) }}</span>
@@ -1192,7 +1193,7 @@ window.StudyApp = {
                   <td><strong>{{ item.summary.title }}</strong></td>
                   <td>
                     <div class="activity-list">
-                      <div class="activity-entry" v-for="(act, ai) in item.summary.activities" :key="ai">
+                      <div class="activity-entry" :class="{ 'activity-entry--past': isPastDate(act.date) }" v-for="(act, ai) in item.summary.activities" :key="ai">
                         <span class="date">{{ formatDate(act.date) }}</span>
                         <span class="type">
                           <span class="activity-pill" :class="pillClass(act.activityType)">{{ activityLabel(act.activityType) }}</span>
@@ -1262,6 +1263,7 @@ window.StudyApp = {
                        class="cal-bar"
                        :style="{ background: bar.color, width: bar.pct + '%' }"></div>
                 </div>
+                <div v-if="isPast(cell.dateKey)" class="cal-past-x" aria-hidden="true">×</div>
               </div>
             </template>
           </div>
@@ -1288,6 +1290,7 @@ window.StudyApp = {
                      :class="{ 'cal-wday-num--today': cell.dateKey === todayKey, 'cal-wday-num--exam': cell.dateKey === examDate }">
                   {{ cell.day }}
                 </div>
+                <div v-if="isPast(cell.dateKey)" class="cal-wday-past-x" aria-hidden="true">×</div>
               </div>
               <!-- Bar region -->
               <div class="cal-wday-bar">
@@ -3027,6 +3030,16 @@ window.StudyApp = {
       if (mode === 'week' && !this.currentCalWeekStart) this.initCalWeek();
       this.calendarPopover = null;
       this.$nextTick(() => this._openTodayPopover());
+    },
+
+    isPast(dateKey) {
+      return typeof dateKey === 'string' && dateKey < this.todayKey;
+    },
+
+    isPastDate(date) {
+      if (!date) return false;
+      const dk = date instanceof Date ? date.toISOString().slice(0, 10) : String(date).slice(0, 10);
+      return dk < this.todayKey;
     },
 
     goToToday() {
