@@ -329,6 +329,9 @@ window.StudyApp = {
       </div>
       <div class="action-bar">
         <button class="btn btn-secondary" @click="navigate('home')">← Back</button>
+        <button v-if="savedPlans.length > 0" class="btn btn-sm" style="border-color:var(--c-error);color:var(--c-error);margin-left:auto" @click="doDeleteAllPlans()">
+          🗑 Delete all plans
+        </button>
       </div>
     </template>
 
@@ -1575,6 +1578,16 @@ window.StudyApp = {
                   <input type="text" class="sr-input" v-model="settingsSrText"
                          placeholder="1, 6, 16, 45, 131" />
                   <span class="form-hint">First value = days after last practice unit before first review. Remaining values = gaps between consecutive reviews. Default: 1, 6, 16, 45, 131</span>
+                </div>
+
+                <div class="form-group" style="padding-top:14px;border-top:1px solid var(--c-border)">
+                  <label style="color:var(--c-error)">Danger zone</label>
+                  <div style="margin-top:8px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+                    <button class="btn btn-sm" style="border-color:var(--c-error);color:var(--c-error)" @click="doClearCachedData()">
+                      Delete cached data
+                    </button>
+                    <span class="form-hint" style="margin:0;align-self:center">Clears the current unsaved plan from memory. Saved &amp; tracked plans are not affected.</span>
+                  </div>
                 </div>
 
               </div>
@@ -3484,6 +3497,26 @@ window.StudyApp = {
         this.trackingMode = false;
         this.activePlanId = null;
       }
+    },
+
+    doDeleteAllPlans() {
+      const n = this.savedPlans.length;
+      if (!confirm(`Permanently delete all ${n} saved plan${n !== 1 ? 's' : ''}?\n\nThis cannot be undone.`)) return;
+      StudyStorage.clearAllPlans();
+      this.savedPlans         = [];
+      this.trackingMode       = false;
+      this.activePlanId       = null;
+      this.trackedBlockedDays = [];
+      this.navigate('home');
+    },
+
+    doClearCachedData() {
+      if (!confirm('Clear the current unsaved plan from memory?\n\nSaved and tracked plans will not be affected.')) return;
+      StudyStorage.clearCurrentPlan();
+      this.planResult       = null;
+      this.hydratedCalendar = [];
+      this.completionStatus = {};
+      this.calendarPopover  = null;
     },
 
     // ── Tracking: blocked days ──────────────────────────────────────────────

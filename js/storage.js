@@ -128,6 +128,13 @@
     } catch (_) {}
   }
 
+  function clearAllPlans() {
+    try {
+      for (const p of listPlans()) localStorage.removeItem(LS_PLAN_PREFIX + p.id);
+      localStorage.setItem(LS_PLANS_INDEX, JSON.stringify([]));
+    } catch (_) {}
+  }
+
   // ─── JSON export / import ───────────────────────────────────────────────────
 
   /**
@@ -313,6 +320,7 @@
     savePlan,
     loadPlan,
     deletePlan,
+    clearAllPlans,
     exportJSON,
     importJSON,
     exportDayByDayCsv,
