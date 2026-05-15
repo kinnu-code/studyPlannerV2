@@ -3238,7 +3238,7 @@ window.StudyApp = {
         rampMode:         this.rampMode,
         numMocks:         this.numMocks,
         unitLength:       this.unitLength,
-        settings:         this.settings,
+        settings:         (({ apiKey, ...rest }) => rest)(this.settings),
         settingsSrText:   this.settingsSrText,
         completionStatus: this.completionStatus,
       };
