@@ -34,6 +34,7 @@
       examId: 'cfa-level-1',
       examName: 'CFA Level 1',
       description: 'CFA Institute Level 1 Examination. Difficulty based on CFA curriculum depth and typical candidate experience.',
+      studyHoursNeeded: 300,
       topics: [
         { title: 'Ethical and Professional Standards', subTopics: [
           { title: 'The Profession', difficulty: 'easy' },
@@ -153,7 +154,7 @@
   async function loadIndex() {
     // Try fetch first (works when served via HTTP); fall back to built-in data
     try {
-      const res = await fetch('data/exams/index.json');
+      const res = await fetch(`data/exams/index.json?v=${Date.now()}`);
       if (res.ok) {
         const list = await res.json();
         // Merge: built-in entries not already in the fetched list stay available
@@ -167,7 +168,7 @@
   async function loadExam(examId) {
     // Try fetch first; fall back to built-in data
     try {
-      const res = await fetch(`data/exams/${examId}.json`);
+      const res = await fetch(`data/exams/${examId}.json?v=${Date.now()}`);
       if (res.ok) return res.json();
     } catch (_) {}
     if (BUILT_IN_DATA[examId]) return BUILT_IN_DATA[examId];

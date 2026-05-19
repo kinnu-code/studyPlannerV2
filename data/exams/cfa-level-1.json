@@ -2,6 +2,7 @@
   "examId": "cfa-level-1",
   "examName": "CFA Level 1",
   "description": "CFA Institute Level 1 Examination. Difficulty ratings based on typical candidate experience and CFA Institute curriculum depth.",
+  "studyHoursNeeded": "300",
   "topics": [
     {
       "title": "Financial Statement Analysis",

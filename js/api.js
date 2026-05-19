@@ -87,6 +87,18 @@
   // ─── parseFreeText ──────────────────────────────────────────────────────────
 
   /**
+   * Sanitize user-supplied free text before it reaches any prompt.
+   * Strips HTML/XML tags, collapses whitespace, and enforces a hard length cap.
+   */
+  function sanitizeFreeText(text) {
+    return String(text)
+      .slice(0, 2000)
+      .replace(/<\/?[^>]+(>|$)/g, '')   // remove any HTML/XML tags
+      .replace(/[^\S\n]+/g, ' ')         // collapse whitespace runs (keep newlines)
+      .trim();
+  }
+
+  /**
    * Extract structured planning info from the user's free-text notes.
    * Returns an object (may be empty {}) — never throws on empty input.
    *
@@ -99,7 +111,7 @@
     if (!freeText || !freeText.trim()) return {};
 
     const prompts = _getPrompts();
-    const { system, user } = prompts.parseFreeText(freeText);
+    const { system, user } = prompts.parseFreeText(sanitizeFreeText(freeText));
 
     const raw = await callOpenAI({
       apiKey,

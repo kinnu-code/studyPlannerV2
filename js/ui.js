@@ -328,7 +328,7 @@ window.StudyApp = {
         </div>
       </div>
       <div class="action-bar">
-        <button class="btn btn-secondary" @click="navigate('home')">← Back</button>
+        <button class="btn btn-secondary" @click="goBack()">← Back</button>
         <button v-if="savedPlans.length > 0" class="btn btn-sm" style="border-color:var(--c-error);color:var(--c-error);margin-left:auto" @click="doDeleteAllPlans()">
           🗑 Delete all plans
         </button>
@@ -355,12 +355,12 @@ window.StudyApp = {
           <div class="mode-cards">
             <div class="mode-card" :class="{ selected: topicInputMode === 'examName' }"
                  @click="topicInputMode = 'examName'">
-              <h4>AI generates everything</h4>
+              <h4>Exam name only</h4>
               <p>Enter the exam name. AI creates a structured hierarchy of subject areas and granular study units.</p>
             </div>
             <div class="mode-card" :class="{ selected: topicInputMode === 'granularList' }"
                  @click="topicInputMode = 'granularList'">
-              <h4>Full topic list</h4>
+              <h4>Manually enter topic list</h4>
               <p>Paste your complete list. Use indentation or # headings to create groups. AI estimates difficulty only.</p>
             </div>
           </div>
@@ -387,6 +387,22 @@ window.StudyApp = {
             <span class="form-hint">Use <strong>#</strong> headings or indentation (2 spaces / tab) to create subject groups. Topics without indentation and no indented children are treated as standalone. AI estimates difficulty only.</span>
           </div>
 
+          <!-- Study dates -->
+          <div class="row">
+            <div class="col">
+              <div class="form-group">
+                <label>Study start date</label>
+                <input type="date" v-model="startDate" />
+              </div>
+            </div>
+            <div class="col">
+              <div class="form-group">
+                <label>Be ready by date</label>
+                <input type="date" v-model="examDate" />
+              </div>
+            </div>
+          </div>
+
           <!-- Free text AI notes -->
           <div class="form-group">
             <label>Additional notes for the AI <span style="font-weight:400;color:var(--c-muted)">(optional)</span></label>
@@ -404,7 +420,7 @@ window.StudyApp = {
           </div>
 
           <div class="action-bar">
-            <button class="btn btn-secondary" @click="navigate('home')">Back</button>
+            <button class="btn btn-secondary" @click="goBack()">Back</button>
             <button class="btn btn-primary btn-lg" @click="doGenerateTopics()"
                     :disabled="!canGenerateTopics">
               Generate Topics →
@@ -460,7 +476,7 @@ window.StudyApp = {
 
           <!-- Top action bar -->
           <div class="action-bar" style="margin-bottom:12px">
-            <button class="btn btn-secondary" @click="navigate('step1')">← Back</button>
+            <button class="btn btn-secondary" @click="goBack()">← Back</button>
             <button v-if="planResult" class="btn btn-secondary" @click="navigate('step4')">Return to Plan</button>
             <button class="btn btn-primary btn-lg" @click="navigate('step3')"
                     :disabled="topics.length === 0">
@@ -618,7 +634,7 @@ window.StudyApp = {
 
           <!-- Bottom action bar -->
           <div class="action-bar">
-            <button class="btn btn-secondary" @click="navigate('step1')">← Back</button>
+            <button class="btn btn-secondary" @click="goBack()">← Back</button>
             <button v-if="planResult" class="btn btn-secondary" @click="navigate('step4')">Return to Plan</button>
             <button class="btn btn-primary btn-lg" @click="navigate('step3')"
                     :disabled="topics.length === 0">
@@ -646,18 +662,41 @@ window.StudyApp = {
           <div class="section-title">Schedule & Settings</div>
           <div class="section-sub">Define your study dates and how many units per day.</div>
 
-          <div class="row">
-            <div class="col">
-              <div class="form-group">
-                <label>Study start date</label>
-                <input type="date" v-model="startDate" />
-              </div>
+          <!-- Recommended study hours banner -->
+          <div v-if="recommendedStudyHours" class="alert alert-info" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+            <div>
+              <strong>Recommended study hours for this exam:</strong> {{ recommendedStudyHours }} hours.
+              <template v-if="!startDate || !examDate">
+                Set your study dates above to see the suggested daily pace.
+              </template>
+              <template v-else-if="recommendedDailyMins > 0 && recommendedDailyMins <= 720">
+                Across {{ recommendedAvailableDays }} available days: <strong>{{ fmtMins(recommendedDailyMins) }}/day</strong>.
+              </template>
+              <template v-else-if="recommendedDailyMins > 720">
+                Only {{ recommendedAvailableDays }} days available — this would require over 12 h/day.
+              </template>
             </div>
-            <div class="col">
-              <div class="form-group">
-                <label>Exam date</label>
-                <input type="date" v-model="examDate" />
-              </div>
+            <button class="btn btn-primary btn-sm"
+                    v-if="startDate && examDate && recommendedDailyMins > 0 && recommendedDailyMins <= 720"
+                    @click="applyRecommendedHours()">Apply recommendation</button>
+          </div>
+
+          <!-- Break days -->
+          <div class="form-group">
+            <label>Break days</label>
+            <div class="form-hint" style="margin-bottom:8px">Dates excluded from study planning (holidays, travel, etc.).</div>
+            <div v-if="breakDays.length" class="break-days-list">
+              <span v-for="d in breakDays" :key="d" class="break-day-chip">
+                {{ d }}
+                <button class="break-day-remove" @click="removeBreakDay(d)" title="Remove">×</button>
+              </span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+              <button class="btn btn-secondary btn-sm" @click="addBreakDay()">+ Add break day</button>
+              <input ref="breakDayPicker" type="date" v-model="breakDayInputVal"
+                     :min="startDate" :max="examDate"
+                     @change="onBreakDayPicked"
+                     style="position:absolute;opacity:0;pointer-events:none;width:0;height:0" />
             </div>
           </div>
 
@@ -767,11 +806,11 @@ window.StudyApp = {
           </div>
 
           <div class="alert alert-warn" v-if="!examDate || !startDate">
-            Please set both a study start date and an exam date.
+            Please set a study start date and a "Be ready by" date on the previous screen.
           </div>
 
           <div class="action-bar">
-            <button class="btn btn-secondary" @click="navigate('step2')">Back</button>
+            <button class="btn btn-secondary" @click="goBack()">Back</button>
             <button class="btn btn-primary btn-lg" @click="doGeneratePlan()"
                     :disabled="!examDate || !startDate">
               Generate Plan →
@@ -1058,31 +1097,40 @@ window.StudyApp = {
           <button class="btn btn-ghost btn-sm" @click="expandAllDays()">▼ Expand all</button>
           <button class="btn btn-ghost btn-sm" @click="collapseAllDays()">▶ Collapse all</button>
         </div>
-        <template v-for="day in studyDaysWithSessions" :key="day.dateKey">
-          <div class="day-block"
+        <template v-for="item in dailyViewItems" :key="item.dateKey">
+          <!-- Break day row -->
+          <div v-if="item.itemType === 'break'" class="day-block day-block--break"
+               :class="{ 'day-block--past': isPast(item.dateKey) }">
+            <div class="day-header">
+              {{ formatDate(item.date) }}
+              <span class="break-day-badge">Break day</span>
+            </div>
+          </div>
+          <!-- Normal study day row -->
+          <div v-else class="day-block"
                :class="{
-                 'day-block--today':   day.dateKey === todayKey,
-                 'day-block--blocked': isBlockedDay(day.dateKey),
-                 'day-block--past':    isPast(day.dateKey),
+                 'day-block--today':   item.dateKey === todayKey,
+                 'day-block--blocked': isBlockedDay(item.dateKey),
+                 'day-block--past':    isPast(item.dateKey),
                }">
-            <div class="day-header" @click="toggleDay(day.dateKey)" style="cursor:pointer;user-select:none">
-              <span class="day-expand-icon">{{ isDayExpanded(day.dateKey) ? '▼' : '▶' }}</span>
-              {{ formatDate(day.date) }}
-              <span v-if="day.dateKey === todayKey" class="today-badge">Today</span>
-              <span v-if="isBlockedDay(day.dateKey)" class="blocked-badge">Not studying</span>
+            <div class="day-header" @click="toggleDay(item.dateKey)" style="cursor:pointer;user-select:none">
+              <span class="day-expand-icon">{{ isDayExpanded(item.dateKey) ? '▼' : '▶' }}</span>
+              {{ formatDate(item.date) }}
+              <span v-if="item.dateKey === todayKey" class="today-badge">Today</span>
+              <span v-if="isBlockedDay(item.dateKey)" class="blocked-badge">Not studying</span>
               <span class="session-count">
-                {{ day.sessions.length }} unit{{ day.sessions.length !== 1 ? 's' : '' }}
-                <span class="day-time-est" v-if="dayEstimatedTime(day.sessions)">· {{ dayEstimatedTime(day.sessions) }}</span>
+                {{ item.sessions.length }} unit{{ item.sessions.length !== 1 ? 's' : '' }}
+                <span class="day-time-est" v-if="dayEstimatedTime(item.sessions)">· {{ dayEstimatedTime(item.sessions) }}</span>
               </span>
               <button v-if="trackingMode" class="btn btn-ghost btn-sm day-block-btn"
-                      :class="{ 'day-block-btn--blocked': isBlockedDay(day.dateKey) }"
-                      @click.stop="toggleBlockedDay(day.dateKey)"
-                      :title="isBlockedDay(day.dateKey) ? 'Mark as studied' : 'Mark as not studied'">
-                {{ isBlockedDay(day.dateKey) ? '✓ Unblock' : '✕ Skip day' }}
+                      :class="{ 'day-block-btn--blocked': isBlockedDay(item.dateKey) }"
+                      @click.stop="toggleBlockedDay(item.dateKey)"
+                      :title="isBlockedDay(item.dateKey) ? 'Mark as studied' : 'Mark as not studied'">
+                {{ isBlockedDay(item.dateKey) ? '✓ Unblock' : '✕ Skip day' }}
               </button>
             </div>
-            <template v-if="isDayExpanded(day.dateKey)">
-              <template v-for="(block, bi) in mergeSessions(day.sessions)" :key="bi">
+            <template v-if="isDayExpanded(item.dateKey)">
+              <template v-for="(block, bi) in mergeSessions(item.sessions)" :key="bi">
                 <div class="session-row">
                   <span class="activity-pill" :class="pillClass(block.activityType)">{{ activityLabel(block.activityType) }}</span>
                   <span class="session-topic">{{ block.topicTitle || (block.activityType === 'mock' ? 'Mock Exam' : 'Post-Mock Revision') }}</span>
@@ -1219,112 +1267,7 @@ window.StudyApp = {
           <button class="btn btn-primary btn-sm" style="margin-left:12px" @click="doRecalculate()">↺ Recalculate from today</button>
         </div>
 
-        <!-- Nav: view toggle + month/week navigation -->
-        <div class="cal-nav">
-          <div class="cal-view-toggle">
-            <button class="cal-toggle-btn" :class="{ active: calViewMode === 'month' }" @click="switchCalView('month')">Month</button>
-            <button class="cal-toggle-btn" :class="{ active: calViewMode === 'week' }"  @click="switchCalView('week')">Week</button>
-          </div>
-          <div class="cal-nav-pager" v-if="calViewMode === 'month'">
-            <button class="btn btn-ghost btn-sm cal-today-btn" @click="goToToday()">Today</button>
-            <button class="btn btn-ghost btn-sm" @click="prevCalMonth()">← Prev</button>
-            <span class="cal-month-label">{{ calendarMonthLabel }}</span>
-            <button class="btn btn-ghost btn-sm" @click="nextCalMonth()">Next →</button>
-          </div>
-          <div class="cal-nav-pager" v-else>
-            <button class="btn btn-ghost btn-sm cal-today-btn" @click="goToToday()">Today</button>
-            <button class="btn btn-ghost btn-sm" @click="prevCalWeek()">← Prev</button>
-            <span class="cal-month-label">{{ calendarWeekLabel }}</span>
-            <button class="btn btn-ghost btn-sm" @click="nextCalWeek()">Next →</button>
-          </div>
-        </div>
-
-        <!-- Month view: Design B card grid -->
-        <template v-if="calViewMode === 'month'">
-          <div class="cal-grid">
-            <div class="cal-dow" v-for="d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d">{{ d }}</div>
-            <template v-for="(cell, ci) in calendarCells" :key="ci">
-              <div v-if="!cell" class="cal-cell cal-cell--pad"></div>
-              <div v-else class="cal-cell"
-                   :class="{
-                     'cal-cell--study':    cell.isStudyDay && !isBlockedDay(cell.dateKey),
-                     'cal-cell--blocked':  isBlockedDay(cell.dateKey),
-                     'cal-cell--selected': calendarPopover && calendarPopover.dateKey === cell.dateKey,
-                     'cal-cell--today':    cell.dateKey === todayKey,
-                     'cal-cell--exam':     cell.dateKey === examDate,
-                   }"
-                   @click="calCellClick(cell)">
-                <div class="cal-cell-header">
-                  <span class="cal-day-num">{{ cell.day }}</span>
-                  <span class="cal-cell-time" v-if="dayEstimatedTime(cell.sessions)">{{ dayEstimatedTime(cell.sessions) }}</span>
-                </div>
-                <div class="cal-bars" v-if="cell.activityBars.length">
-                  <div v-for="bar in cell.activityBars" :key="bar.type"
-                       class="cal-bar"
-                       :style="{ background: bar.color, width: bar.pct + '%' }"></div>
-                </div>
-                <div v-if="isPast(cell.dateKey)" class="cal-past-x" aria-hidden="true">×</div>
-              </div>
-            </template>
-          </div>
-        </template>
-
-        <!-- Week view: Design C agenda list -->
-        <template v-else>
-          <div class="cal-week-list">
-            <div v-for="cell in calendarWeekCells" :key="cell.dateKey"
-                 class="cal-wday"
-                 :class="{
-                   'cal-wday--study':    cell.isStudyDay && !isBlockedDay(cell.dateKey),
-                   'cal-wday--blocked':  isBlockedDay(cell.dateKey),
-                   'cal-wday--selected': calendarPopover && calendarPopover.dateKey === cell.dateKey,
-                   'cal-wday--today':    cell.dateKey === todayKey,
-                   'cal-wday--exam':     cell.dateKey === examDate,
-                   'cal-wday--off':      !cell.isStudyDay && !isBlockedDay(cell.dateKey),
-                 }"
-                 @click="calCellClick(cell)">
-              <!-- Date column -->
-              <div class="cal-wday-date">
-                <div class="cal-wday-dow">{{ cell.dow }}</div>
-                <div class="cal-wday-num"
-                     :class="{ 'cal-wday-num--today': cell.dateKey === todayKey, 'cal-wday-num--exam': cell.dateKey === examDate }">
-                  {{ cell.day }}
-                </div>
-                <div v-if="isPast(cell.dateKey)" class="cal-wday-past-x" aria-hidden="true">×</div>
-              </div>
-              <!-- Bar region -->
-              <div class="cal-wday-bar">
-                <div v-if="cell.relWidth > 0" class="cal-wday-bar-track" :style="{ width: cell.relWidth + '%' }">
-                  <div v-for="seg in cell.activityBars" :key="seg.type"
-                       class="cal-wday-seg"
-                       :style="{ background: seg.color, flex: seg.pct }">
-                    {{ seg.label }}
-                  </div>
-                </div>
-                <span v-else class="cal-wday-off-label">— off —</span>
-              </div>
-              <!-- Time -->
-              <div class="cal-wday-time" v-if="cell.isStudyDay">{{ dayEstimatedTime(cell.sessions) }}</div>
-              <div class="cal-wday-time" v-else></div>
-            </div>
-          </div>
-        </template>
-
-        <!-- Legend -->
-        <div class="cal-legend">
-          <span v-for="item in calDotLegend" :key="item.label" class="cal-legend-item">
-            <span class="cal-dot" :style="{ background: item.color }"></span>
-            {{ item.label }}
-          </span>
-          <span class="cal-legend-item">
-            <span class="cal-cell--today cal-legend-swatch"></span> Today
-          </span>
-          <span class="cal-legend-item">
-            <span class="cal-cell--exam cal-legend-swatch"></span> Exam date
-          </span>
-        </div>
-
-        <!-- Day detail panel (shown when a day is selected) -->
+        <!-- Day detail panel (shown above calendar when a day is selected) -->
         <div class="cal-detail" v-if="calendarPopover">
           <div class="cal-detail-header">
             <strong>{{ formatDate(calendarPopover.date) }}</strong>
@@ -1358,6 +1301,118 @@ window.StudyApp = {
             </div>
           </div>
         </div>
+
+        <!-- Nav: view toggle + month/week navigation -->
+        <div class="cal-nav">
+          <div class="cal-view-toggle">
+            <button class="cal-toggle-btn" :class="{ active: calViewMode === 'month' }" @click="switchCalView('month')">Month</button>
+            <button class="cal-toggle-btn" :class="{ active: calViewMode === 'week' }"  @click="switchCalView('week')">Week</button>
+          </div>
+          <div class="cal-nav-pager" v-if="calViewMode === 'month'">
+            <button class="btn btn-ghost btn-sm cal-today-btn" @click="goToToday()">Today</button>
+            <button class="btn btn-ghost btn-sm" @click="prevCalMonth()">← Prev</button>
+            <span class="cal-month-label">{{ calendarMonthLabel }}</span>
+            <button class="btn btn-ghost btn-sm" @click="nextCalMonth()">Next →</button>
+          </div>
+          <div class="cal-nav-pager" v-else>
+            <button class="btn btn-ghost btn-sm cal-today-btn" @click="goToToday()">Today</button>
+            <button class="btn btn-ghost btn-sm" @click="prevCalWeek()">← Prev</button>
+            <span class="cal-month-label">{{ calendarWeekLabel }}</span>
+            <button class="btn btn-ghost btn-sm" @click="nextCalWeek()">Next →</button>
+          </div>
+        </div>
+
+        <!-- Month view: Design B card grid -->
+        <template v-if="calViewMode === 'month'">
+          <div class="cal-grid">
+            <div class="cal-dow" v-for="d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d">{{ d }}</div>
+            <template v-for="(cell, ci) in calendarCells" :key="ci">
+              <div v-if="!cell" class="cal-cell cal-cell--pad"></div>
+              <div v-else class="cal-cell"
+                   :class="{
+                     'cal-cell--study':    cell.isStudyDay && !isBlockedDay(cell.dateKey),
+                     'cal-cell--blocked':  isBlockedDay(cell.dateKey),
+                     'cal-cell--break':    isBreakDay(cell.dateKey),
+                     'cal-cell--selected': calendarPopover && calendarPopover.dateKey === cell.dateKey,
+                     'cal-cell--today':    cell.dateKey === todayKey,
+                     'cal-cell--exam':     cell.dateKey === examDate,
+                   }"
+                   @click="calCellClick(cell)">
+                <div class="cal-cell-header">
+                  <span class="cal-day-num">{{ cell.day }}</span>
+                  <span class="cal-cell-time" v-if="dayEstimatedTime(cell.sessions)">{{ dayEstimatedTime(cell.sessions) }}</span>
+                </div>
+                <div class="cal-bars" v-if="cell.activityBars.length">
+                  <div v-for="bar in cell.activityBars" :key="bar.type"
+                       class="cal-bar"
+                       :style="{ background: bar.color, width: bar.pct + '%' }"></div>
+                </div>
+                <div v-if="isPast(cell.dateKey)" class="cal-past-x" aria-hidden="true">×</div>
+              </div>
+            </template>
+          </div>
+        </template>
+
+        <!-- Week view: Design C agenda list -->
+        <template v-else>
+          <div class="cal-week-list">
+            <div v-for="cell in calendarWeekCells" :key="cell.dateKey"
+                 class="cal-wday"
+                 :class="{
+                   'cal-wday--study':    cell.isStudyDay && !isBlockedDay(cell.dateKey),
+                   'cal-wday--blocked':  isBlockedDay(cell.dateKey),
+                   'cal-wday--break':    isBreakDay(cell.dateKey),
+                   'cal-wday--selected': calendarPopover && calendarPopover.dateKey === cell.dateKey,
+                   'cal-wday--today':    cell.dateKey === todayKey,
+                   'cal-wday--exam':     cell.dateKey === examDate,
+                   'cal-wday--off':      !cell.isStudyDay && !isBlockedDay(cell.dateKey) && !isBreakDay(cell.dateKey),
+                 }"
+                 @click="calCellClick(cell)">
+              <!-- Date column -->
+              <div class="cal-wday-date">
+                <div class="cal-wday-dow">{{ cell.dow }}</div>
+                <div class="cal-wday-num"
+                     :class="{ 'cal-wday-num--today': cell.dateKey === todayKey, 'cal-wday-num--exam': cell.dateKey === examDate }">
+                  {{ cell.day }}
+                </div>
+                <div v-if="isPast(cell.dateKey)" class="cal-wday-past-x" aria-hidden="true">×</div>
+              </div>
+              <!-- Bar region -->
+              <div class="cal-wday-bar">
+                <div v-if="cell.relWidth > 0" class="cal-wday-bar-track" :style="{ width: cell.relWidth + '%' }">
+                  <div v-for="seg in cell.activityBars" :key="seg.type"
+                       class="cal-wday-seg"
+                       :style="{ background: seg.color, flex: seg.pct }">
+                    {{ seg.label }}
+                  </div>
+                </div>
+                <span v-else-if="isBreakDay(cell.dateKey)" class="cal-wday-off-label cal-wday-break-label">— break day —</span>
+                <span v-else class="cal-wday-off-label">— off —</span>
+              </div>
+              <!-- Time -->
+              <div class="cal-wday-time" v-if="cell.isStudyDay">{{ dayEstimatedTime(cell.sessions) }}</div>
+              <div class="cal-wday-time" v-else></div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Legend -->
+        <div class="cal-legend">
+          <span v-for="item in calDotLegend" :key="item.label" class="cal-legend-item">
+            <span class="cal-dot" :style="{ background: item.color }"></span>
+            {{ item.label }}
+          </span>
+          <span class="cal-legend-item">
+            <span class="cal-cell--today cal-legend-swatch"></span> Today
+          </span>
+          <span class="cal-legend-item">
+            <span class="cal-cell--exam cal-legend-swatch"></span> Exam date
+          </span>
+          <span v-if="breakDays.length" class="cal-legend-item">
+            <span class="cal-cell--break cal-legend-swatch"></span> Break day
+          </span>
+        </div>
+
 
       </div>
 
@@ -1462,7 +1517,7 @@ window.StudyApp = {
           </div>
 
           <div class="action-bar">
-            <button class="btn btn-secondary" @click="navigate('home')">Back</button>
+            <button class="btn btn-secondary" @click="goBack()">Back</button>
             <button class="btn btn-secondary" @click="doGeneratePlan()">Regenerate Plan →</button>
             <button class="btn btn-primary" @click="doAdjustSchedule()">⚡ Adjust schedule for me</button>
           </div>
@@ -1658,12 +1713,17 @@ window.StudyApp = {
       // Step 3
       startDate: today,
       examDate:  '',
-      firstWeek: { mon: 60, tue: 60, wed: 60, thu: 60, fri: 60, sat: 0, sun: 0 },
+      firstWeek: { mon: 60, tue: 60, wed: 60, thu: 60, fri: 60, sat: 60, sun: 60 },
       rampMode:  'linear',
-      intensityMultiplier: 1.5,
+      intensityMultiplier: 1,
       numMocks:  3,
       unitLength: 20,  // minutes per study unit (fixed by user, used as forcedSessionLength)
       scheduleTooltip: { visible: false, text: '', x: 0, y: 0 },
+      breakDays: [],               // array of 'YYYY-MM-DD' date strings excluded from planning
+      breakDayInputVal: '',        // bound to the hidden date picker
+      recommendedStudyHours: null, // from predefined exam JSON `studyHoursNeeded` field
+
+      recommendedHoursApplied: false,
 
       // Step 2 — group collapse state
       collapsedGroups: {},
@@ -1706,8 +1766,7 @@ window.StudyApp = {
       // Settings page
       advancedExpanded:  false,
       settingsSrText:    (settings.srIntervals || [1,6,16,45,131]).join(', '),
-      prevScreen:        'home',
-      prevActiveTab:     'calendar',
+      navHistory:        [],
       settingsSnapshot:  null,
 
       // Loading / error
@@ -1911,6 +1970,25 @@ window.StudyApp = {
         ...d,
         dateKey: d.date instanceof Date ? d.date.toISOString().slice(0, 10) : d.date,
       }));
+    },
+
+    // Study days interleaved with break-day markers, sorted by date, for the Day-by-Day tab
+    dailyViewItems() {
+      const studyItems = this.studyDaysWithSessions.map(d => ({ ...d, itemType: 'study' }));
+      if (!this.breakDays.length) return studyItems;
+      // Only show break days that fall within the plan range
+      const allKeys = new Set(this.hydratedCalendar.map(d =>
+        d.date instanceof Date ? d.date.toISOString().slice(0, 10) : d.date
+      ));
+      const breakItems = this.breakDays
+        .filter(dk => allKeys.has(dk))
+        .map(dk => ({
+          dateKey: dk,
+          date: new Date(dk + 'T00:00:00Z'),
+          sessions: [],
+          itemType: 'break',
+        }));
+      return [...studyItems, ...breakItems].sort((a, b) => a.dateKey.localeCompare(b.dateKey));
     },
 
     planTotalHours() {
@@ -2132,18 +2210,47 @@ window.StudyApp = {
       if (totalDays < 7) return [];
       const totalWeeks = Math.max(2, Math.ceil(totalDays / 7));
       const last = this.lastWeekComputed;
-      const DOW  = ['mon','tue','wed','thu','fri','sat','sun'];
+      const DOW_KEYS = ['sun','mon','tue','wed','thu','fri','sat']; // getUTCDay order
+      const breakSet = new Set(this.breakDays || []);
       const data = [];
       for (let w = 0; w < totalWeeks; w++) {
         let mins = 0;
-        for (const d of DOW) {
+        for (let di = 0; di < 7; di++) {
+          const dayDate = new Date(start.getTime() + (w * 7 + di) * 86400000);
+          if (dayDate >= exam) break;
+          const dk = dayDate.toISOString().slice(0, 10);
+          if (breakSet.has(dk)) continue;
+          const dow = DOW_KEYS[dayDate.getUTCDay()];
           mins += StudyPlanner.interpolateSessions(
-            this.firstWeek[d] || 0, last[d] || 0, w, totalWeeks, this.rampMode
+            this.firstWeek[dow] || 0, last[dow] || 0, w, totalWeeks, this.rampMode
           );
         }
         data.push({ week: w + 1, hours: mins / 60 });
       }
       return data;
+    },
+
+    // Available days between start and exam (excluding break days), used for recommended hours
+    recommendedAvailableDays() {
+      if (!this.startDate || !this.examDate) return 0;
+      const start = new Date(this.startDate + 'T00:00:00Z');
+      const exam  = new Date(this.examDate  + 'T00:00:00Z');
+      const breakSet = new Set(this.breakDays || []);
+      let count = 0;
+      let cur = new Date(start);
+      while (cur < exam) {
+        if (!breakSet.has(cur.toISOString().slice(0, 10))) count++;
+        cur = new Date(cur.getTime() + 86400000);
+      }
+      return count;
+    },
+
+    // Suggested daily minutes based on recommendedStudyHours and available days
+    recommendedDailyMins() {
+      if (!this.recommendedStudyHours || !this.recommendedAvailableDays) return 0;
+      const unit = this.unitLength || 20;
+      const totalMins = Math.ceil(this.recommendedStudyHours * 60 / unit) * unit;
+      return Math.round(totalMins / this.recommendedAvailableDays / unit) * unit;
     },
 
     computedSessionLengthPreview() {
@@ -2158,7 +2265,7 @@ window.StudyApp = {
         lnTable: this.settings.lnTable || { easy: 1, medium: 2, hard: 3 },
         pnTable: this.settings.pnTable || { easy: 3, medium: 4, hard: 5 },
       };
-      const totalMins  = StudyPlanner.countCalendarMinutes(start, exam, this.firstWeek, this.lastWeekComputed, this.rampMode);
+      const totalMins  = StudyPlanner.countCalendarMinutes(start, exam, this.firstWeek, this.lastWeekComputed, this.rampMode, this.breakDays || []);
       const totalUnits = StudyPlanner.computeTotalWorkUnits(
         leafTopics.map(t => ({ difficulty: t.difficulty || 'medium' })),
         mergedSettings
@@ -2186,24 +2293,39 @@ window.StudyApp = {
   methods: {
 
     navigate(screen) {
+      if (screen === 'home') {
+        this.navHistory = [];
+      } else {
+        this.navHistory = [...this.navHistory, { screen: this.screen, activeTab: this.activeTab }];
+      }
       if (screen === 'settings') {
-        this.prevScreen    = this.screen;
-        this.prevActiveTab = this.activeTab;
-        this.settingsSrText = (this.settings.srIntervals || [1,6,16,45,131]).join(', ');
+        this.settingsSrText   = (this.settings.srIntervals || [1,6,16,45,131]).join(', ');
         this.settingsSnapshot = JSON.stringify(this.settings);
       }
-      if (screen === 'home' || screen === 'step1') {
-        if (screen === 'step1') {
-          this.trackingMode = false;
-          this.activePlanId = null;
-          this.unitLength   = 20;
-        }
+      if (screen === 'step1') {
+        this.trackingMode = false;
+        this.activePlanId = null;
+        this.unitLength   = 20;
       }
       if (screen === 'planList') {
         this.loadSavedPlans();
       }
       this.screen = screen;
       this.error  = null;
+    },
+
+    goBack() {
+      if (!this.navHistory.length) {
+        this.screen = 'home';
+        this.error  = null;
+        return;
+      }
+      const { screen, activeTab } = this.navHistory[this.navHistory.length - 1];
+      this.navHistory = this.navHistory.slice(0, -1);
+      if (screen === 'planList') this.loadSavedPlans();
+      this.screen    = screen;
+      this.activeTab = activeTab;
+      this.error     = null;
     },
 
     // ── Step 1 → Step 2 ────────────────────────────────────────────────────
@@ -2357,6 +2479,12 @@ window.StudyApp = {
       this.freeTextApplied = [];
 
       try {
+        // ── API key check: required unless predefined exam with no free-text ──
+        const needsApi = !(this.selectedPredefinedExam && this.topicInputMode === 'examName' && !this.freeText.trim());
+        if (needsApi && !this.settings.apiKey) {
+          throw new Error('An API key is required. Please go to Settings and enter your API key.');
+        }
+
         // ── Step 1: parse free-text notes upfront (single API call, all modes) ──
         let freeTextInfo = {};
         if (this.freeText.trim()) {
@@ -2373,6 +2501,10 @@ window.StudyApp = {
           // Predefined exam: load from JSON, no AI topic-generation call needed
           this.loadingMsg = `Loading ${this.selectedPredefinedExam.name}…`;
           const examData = await StudyExams.loadExam(this.selectedPredefinedExam.id);
+          const rawHrs = examData.studyHoursNeeded;
+          this.recommendedStudyHours = rawHrs != null ? (parseInt(rawHrs, 10) || null) : null;
+          this.recommendedHoursApplied = false;
+
           const flat = StudyApi.flattenHierarchical(examData.topics || []);
           const titleToId = {};
           this.topics = flat.map(t => {
@@ -2389,6 +2521,8 @@ window.StudyApp = {
           });
 
         } else if (this.topicInputMode === 'granularList') {
+          this.recommendedStudyHours = null;
+
           // Mode 3: user provided full list; AI assigns difficulty only
           const parsed    = parseHierarchyInput(this.granularTopicsText);
           const leafItems = parsed.filter(t => !t.isGroup);
@@ -2420,6 +2554,8 @@ window.StudyApp = {
           }));
 
         } else {
+          this.recommendedStudyHours = null;
+
           // Mode 1: AI generates the full hierarchy
           const flat = await StudyApi.generateTopics({
             mode:        this.topicInputMode,
@@ -2683,6 +2819,7 @@ window.StudyApp = {
         srIntervals:         srIntervals.length ? srIntervals : [1,6,16,45,131],
         postMockSameDay:     this.settings.postMockSameDay !== false,
         fixedMockDates:      this._buildFixedMockDates(),
+        blockedDays:         this.breakDays || [],
         forcedSessionLength: this.unitLength,
         settings: {
           lnTable:                this.settings.lnTable,
@@ -3158,6 +3295,33 @@ window.StudyApp = {
       }
     },
 
+    applyRecommendedHours() {
+      const daily = this.recommendedDailyMins;
+      if (!daily || daily > 720) return;
+      for (const dow of ['mon','tue','wed','thu','fri','sat','sun']) {
+        this.firstWeek[dow] = daily;
+      }
+      this.intensityMultiplier = 1;
+      this.recommendedHoursApplied = true;
+    },
+
+    addBreakDay() {
+      const input = this.$refs.breakDayPicker;
+      if (input) input.showPicker ? input.showPicker() : input.click();
+    },
+
+    onBreakDayPicked(e) {
+      const val = (e && e.target && e.target.value) || this.breakDayInputVal;
+      if (val && !this.breakDays.includes(val)) {
+        this.breakDays = [...this.breakDays, val].sort();
+      }
+      this.breakDayInputVal = '';
+    },
+
+    removeBreakDay(d) {
+      this.breakDays = this.breakDays.filter(x => x !== d);
+    },
+
     adjustIntensity(delta) {
       const val = Math.round((this.intensityMultiplier + delta) * 100) / 100;
       this.intensityMultiplier = Math.max(1, Math.min(8, val));
@@ -3304,6 +3468,7 @@ window.StudyApp = {
         settings:         (({ apiKey, ...rest }) => rest)(this.settings),
         settingsSrText:   this.settingsSrText,
         completionStatus: this.completionStatus,
+        breakDays:        this.breakDays,
       };
     },
 
@@ -3339,6 +3504,7 @@ window.StudyApp = {
       if (data.topicInputMode) this.topicInputMode = data.topicInputMode;
       if (data.settings)      Object.assign(this.settings, data.settings);
       if (data.settingsSrText) this.settingsSrText = data.settingsSrText;
+      if (Array.isArray(data.breakDays)) this.breakDays = data.breakDays;
       if (data.completionStatus) this.completionStatus = data.completionStatus;
 
       // Update topic start dates to "today" for replanning
@@ -3358,9 +3524,7 @@ window.StudyApp = {
         Object.assign(this.settings, JSON.parse(this.settingsSnapshot));
         this.settingsSrText = (this.settings.srIntervals || [1,6,16,45,131]).join(', ');
       }
-      this.screen    = this.prevScreen;
-      this.activeTab = this.prevActiveTab;
-      this.error     = null;
+      this.goBack();
     },
 
     doSaveSettings() {
@@ -3372,9 +3536,7 @@ window.StudyApp = {
       StudyStorage.saveSettings(this.settings);
 
       // Return to wherever the user came from
-      this.screen    = this.prevScreen;
-      this.activeTab = this.prevActiveTab;
-      this.error     = null;
+      this.goBack();
 
       // Regenerate if scheduling-relevant settings changed and a plan exists
       const SCHEDULING_KEYS = ['lnTable', 'pnTable', 'learningMode', 'maxNewTopicsPerDay',
@@ -3448,6 +3610,12 @@ window.StudyApp = {
       this.activePlanId = null;
       this.trackedBlockedDays = [];
       this.unitLength = 20;
+      this.firstWeek = { mon: 60, tue: 60, wed: 60, thu: 60, fri: 60, sat: 60, sun: 60 };
+      this.intensityMultiplier = 1;
+      this.rampMode = 'linear';
+      this.breakDays = [];
+      this.recommendedStudyHours = null;
+      this.recommendedHoursApplied = false;
       this.navigate('step1');
     },
 
@@ -3573,6 +3741,10 @@ window.StudyApp = {
 
     isBlockedDay(dateKey) {
       return this.trackedBlockedDays.includes(dateKey);
+    },
+
+    isBreakDay(dateKey) {
+      return this.breakDays.includes(dateKey);
     },
 
     toggleBlockedDay(dateKey) {
@@ -3774,7 +3946,12 @@ window.StudyApp = {
         this.$nextTick(() => this.renderChart());
       }
       if (newScreen === 'step3') {
-        this.$nextTick(() => this.drawScheduleChart());
+        this.$nextTick(() => {
+          this.drawScheduleChart();
+          if (this.recommendedStudyHours && !this.recommendedHoursApplied) {
+            this.applyRecommendedHours();
+          }
+        });
       }
     },
     firstWeek: {
@@ -3785,6 +3962,10 @@ window.StudyApp = {
     rampMode()            { this.$nextTick(() => this.drawScheduleChart()); },
     startDate()           { this.$nextTick(() => this.drawScheduleChart()); },
     examDate()            { this.$nextTick(() => this.drawScheduleChart()); },
+    breakDays: {
+      deep: true,
+      handler() { this.$nextTick(() => this.drawScheduleChart()); },
+    },
     overflowEditSchedule(val) { if (val) this.$nextTick(() => this.drawScheduleChart()); },
     overflowExpanded(val) { if (val && this.overflowEditSchedule) this.$nextTick(() => this.drawScheduleChart()); },
   },
