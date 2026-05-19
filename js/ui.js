@@ -833,6 +833,49 @@ window.StudyApp = {
         <div class="step active"><div class="step-num">4</div><span class="step-label">Your Plan</span></div>
       </div>
 
+      <!-- ── Unmarked past activities prompt ── -->
+      <div v-if="unmarkedPastPromptVisible" class="automark-overlay">
+        <div class="automark-dialog">
+          <h3 style="margin:0 0 10px">Unmarked past activities</h3>
+          <p style="margin:0 0 18px;color:var(--c-muted);font-size:.9rem">
+            There are past activities that haven't been marked as Done or Skip. All activities must have a status before updating. Would you like to <strong>mark all unmarked ones as Done</strong>, or go back and mark them manually?
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-primary" @click="confirmAutoMarkPast()">Mark all as done</button>
+            <button class="btn btn-secondary" @click="dismissUnmarkedPastPrompt()">I'll mark manually</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Reschedule-from prompt overlay ── -->
+      <div v-if="rescheduleFromPromptVisible" class="automark-overlay">
+        <div class="automark-dialog">
+          <h3 style="margin:0 0 10px">Include today's activities?</h3>
+          <p style="margin:0 0 18px;color:var(--c-muted);font-size:.9rem">
+            Today has activities that haven't been marked as done. Should rescheduling start from <strong>today</strong> (so pending activities are included today), or from <strong>tomorrow</strong>?
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-primary" @click="confirmRescheduleFromToday()">Start from today</button>
+            <button class="btn btn-secondary" @click="confirmRescheduleFromTomorrow()">Start from tomorrow</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Auto-mark prompt overlay ── -->
+      <div v-if="autoMarkPromptVisible" class="automark-overlay">
+        <div class="automark-dialog">
+          <h3 style="margin:0 0 10px">You have unreviewed past sessions</h3>
+          <p style="margin:0 0 18px;color:var(--c-muted);font-size:.9rem">
+            There are study sessions from previous days with no status marked.
+            Would you like to automatically mark them all as <strong>Done</strong>?
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-primary" @click="confirmAutoMark()">Yes, mark all as done</button>
+            <button class="btn btn-secondary" @click="dismissAutoMark()">No, I'll mark manually</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ── Tracking banner ── -->
       <div v-if="trackingMode" class="tracking-banner">
         <div class="tracking-banner-left">
@@ -842,8 +885,14 @@ window.StudyApp = {
         </div>
         <div class="tracking-banner-right">
           <button class="btn btn-secondary btn-sm" @click="navigate('planList')">← Plans</button>
-          <button class="btn btn-primary btn-sm" @click="doRecalculate()">↺ Recalculate from today</button>
+          <button class="btn btn-primary btn-sm" @click="doApplyAndUpdate()">↺ Apply & Update</button>
         </div>
+      </div>
+
+      <!-- ── Manual mark reminder ── -->
+      <div v-if="manualMarkReminderVisible" class="manual-mark-reminder">
+        <span>⚠ Unmarked past sessions will be rescheduled when you click Apply & Update. Mark each activity Done or Skip before applying.</span>
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto;flex-shrink:0" @click="manualMarkReminderVisible = false">Dismiss</button>
       </div>
 
       <!-- Overflow / tweak panel — always expandable; auto-opens when overflow -->
@@ -1109,9 +1158,10 @@ window.StudyApp = {
           <!-- Normal study day row -->
           <div v-else class="day-block"
                :class="{
-                 'day-block--today':   item.dateKey === todayKey,
-                 'day-block--blocked': isBlockedDay(item.dateKey),
-                 'day-block--past':    isPast(item.dateKey),
+                 'day-block--today':    item.dateKey === todayKey,
+                 'day-block--blocked':  isBlockedDay(item.dateKey),
+                 'day-block--past':     isPast(item.dateKey),
+                 'day-block--all-done': fullyDoneDays[item.dateKey],
                }">
             <div class="day-header" @click="toggleDay(item.dateKey)" style="cursor:pointer;user-select:none">
               <span class="day-expand-icon">{{ isDayExpanded(item.dateKey) ? '▼' : '▶' }}</span>
@@ -1131,11 +1181,28 @@ window.StudyApp = {
             </div>
             <template v-if="isDayExpanded(item.dateKey)">
               <template v-for="(block, bi) in mergeSessions(item.sessions)" :key="bi">
-                <div class="session-row">
+                <div class="session-row"
+                     :class="{
+                       'session-row--done': trackingMode && isSessionDone(item.dateKey, block),
+                       'session-row--skip': trackingMode && isSessionSkipped(item.dateKey, block),
+                     }">
                   <span class="activity-pill" :class="pillClass(block.activityType)">{{ activityLabel(block.activityType) }}</span>
                   <span class="session-topic">{{ block.topicTitle || (block.activityType === 'mock' ? 'Mock Exam' : 'Post-Mock Revision') }}</span>
                   <span class="session-count-badge" v-if="block.count > 1">× {{ block.count }}</span>
                   <span class="session-reason">{{ block.reason }}</span>
+                  <template v-if="trackingMode && item.dateKey <= todayKey">
+                    <template v-if="lockedDays[item.dateKey]">
+                      <span class="track-locked-badge">🔒</span>
+                    </template>
+                    <template v-else>
+                      <button class="btn btn-xs track-btn"
+                              :class="isSessionDone(item.dateKey, block) ? 'track-btn--done' : ''"
+                              @click.stop="setSessionStatus(item.dateKey, block, 'done')">✓</button>
+                      <button class="btn btn-xs track-btn"
+                              :class="isSessionSkipped(item.dateKey, block) ? 'track-btn--skip' : ''"
+                              @click.stop="setSessionStatus(item.dateKey, block, 'skip')">✕</button>
+                    </template>
+                  </template>
                 </div>
               </template>
             </template>
@@ -1263,8 +1330,8 @@ window.StudyApp = {
       <!-- ── Tab: Calendar View ── -->
       <div v-if="activeTab === 'calendar'" class="cal-wrap">
         <div v-if="trackingMode" class="tracking-cal-hint">
-          Click any day to view study units or toggle it as a skip day.
-          <button class="btn btn-primary btn-sm" style="margin-left:12px" @click="doRecalculate()">↺ Recalculate from today</button>
+          <button class="btn btn-primary btn-sm tracking-action-btn" @click="doApplyAndUpdate()">↺ Apply & Update</button>
+          <span>Click any day to view or mark activities. Unmarked past sessions will be rescheduled.</span>
         </div>
 
         <!-- Day detail panel (shown above calendar when a day is selected) -->
@@ -1280,24 +1347,51 @@ window.StudyApp = {
               </template>
               <template v-else>No units</template>
             </span>
-            <button v-if="trackingMode"
-                    class="btn btn-sm"
+            <!-- Future days in tracking: skip day toggle -->
+            <button v-if="trackingMode && calendarPopover.dateKey > todayKey"
+                    class="btn btn-sm tracking-action-btn"
                     :class="isBlockedDay(calendarPopover.dateKey) ? 'btn-primary' : 'btn-secondary'"
                     style="margin-left:auto"
                     @click="toggleBlockedDay(calendarPopover.dateKey)">
-              {{ isBlockedDay(calendarPopover.dateKey) ? '✓ Unblock day' : '✕ Mark as skip day' }}
+              {{ isBlockedDay(calendarPopover.dateKey) ? '✓ Unblock day' : '✕ Skip day' }}
             </button>
-            <button v-else class="btn btn-ghost btn-sm" @click="calendarPopover = null" style="margin-left:auto;padding:2px 8px">✕</button>
+            <!-- Collapse / expand toggle — always present -->
+            <button class="btn btn-ghost btn-sm cal-detail-collapse-btn"
+                    :style="trackingMode && calendarPopover.dateKey > todayKey ? '' : 'margin-left:auto'"
+                    :title="dayDetailCollapsed ? 'Expand' : 'Collapse'"
+                    @click="dayDetailCollapsed = !dayDetailCollapsed">
+              {{ dayDetailCollapsed ? '▼' : '▲' }}
+            </button>
           </div>
-          <div v-if="isBlockedDay(calendarPopover.dateKey)" class="cal-detail-blocked">
-            This day is marked as a skip day. Recalculate to reschedule its sessions.
-          </div>
-          <div class="cal-detail-body" v-if="calendarPopover.sessions.length">
-            <div v-for="(block, bi) in mergeSessions(calendarPopover.sessions)" :key="bi" class="cal-detail-row">
-              <span class="activity-pill" :class="pillClass(block.activityType)">{{ activityLabel(block.activityType) }}</span>
-              <span class="cal-detail-topic">{{ block.topicTitle || (block.activityType === 'mock' ? 'Mock Exam' : 'Post-Mock Revision') }}</span>
-              <span class="session-count-badge" v-if="block.count > 1">× {{ block.count }}</span>
-              <span class="session-reason">{{ block.reason }}</span>
+          <div v-show="!dayDetailCollapsed">
+            <div v-if="isBlockedDay(calendarPopover.dateKey)" class="cal-detail-blocked">
+              This day is marked as a skip day. Apply & Update to reschedule its sessions.
+            </div>
+            <div class="cal-detail-body" v-if="calendarPopover.sessions.length">
+              <div v-for="(block, bi) in mergeSessions(calendarPopover.sessions)" :key="bi"
+                   class="cal-detail-row"
+                   :class="{
+                     'cal-detail-row--done': isSessionDone(calendarPopover.dateKey, block),
+                     'cal-detail-row--skip': isSessionSkipped(calendarPopover.dateKey, block),
+                   }">
+                <span class="activity-pill" :class="pillClass(block.activityType)">{{ activityLabel(block.activityType) }}</span>
+                <span class="cal-detail-topic">{{ block.topicTitle || (block.activityType === 'mock' ? 'Mock Exam' : 'Post-Mock Revision') }}</span>
+                <span class="session-count-badge" v-if="block.count > 1">× {{ block.count }}</span>
+                <span class="session-reason">{{ block.reason }}</span>
+                <template v-if="trackingMode && calendarPopover.dateKey <= todayKey">
+                  <template v-if="lockedDays[calendarPopover.dateKey]">
+                    <span class="track-locked-badge">🔒</span>
+                  </template>
+                  <template v-else>
+                    <button class="btn btn-xs track-btn"
+                            :class="isSessionDone(calendarPopover.dateKey, block) ? 'track-btn--done' : ''"
+                            @click="setSessionStatus(calendarPopover.dateKey, block, 'done')">✓ Done</button>
+                    <button class="btn btn-xs track-btn"
+                            :class="isSessionSkipped(calendarPopover.dateKey, block) ? 'track-btn--skip' : ''"
+                            @click="setSessionStatus(calendarPopover.dateKey, block, 'skip')">✕ Skip</button>
+                  </template>
+                </template>
+              </div>
             </div>
           </div>
         </div>
@@ -1336,6 +1430,7 @@ window.StudyApp = {
                      'cal-cell--selected': calendarPopover && calendarPopover.dateKey === cell.dateKey,
                      'cal-cell--today':    cell.dateKey === todayKey,
                      'cal-cell--exam':     cell.dateKey === examDate,
+                     'cal-cell--past':     isPast(cell.dateKey),
                    }"
                    @click="calCellClick(cell)">
                 <div class="cal-cell-header">
@@ -1347,7 +1442,7 @@ window.StudyApp = {
                        class="cal-bar"
                        :style="{ background: bar.color, width: bar.pct + '%' }"></div>
                 </div>
-                <div v-if="isPast(cell.dateKey)" class="cal-past-x" aria-hidden="true">×</div>
+                <div v-if="fullyDoneDays[cell.dateKey]" class="cal-past-x" aria-hidden="true">×</div>
               </div>
             </template>
           </div>
@@ -1366,6 +1461,7 @@ window.StudyApp = {
                    'cal-wday--today':    cell.dateKey === todayKey,
                    'cal-wday--exam':     cell.dateKey === examDate,
                    'cal-wday--off':      !cell.isStudyDay && !isBlockedDay(cell.dateKey) && !isBreakDay(cell.dateKey),
+                   'cal-wday--past':     isPast(cell.dateKey),
                  }"
                  @click="calCellClick(cell)">
               <!-- Date column -->
@@ -1375,7 +1471,7 @@ window.StudyApp = {
                      :class="{ 'cal-wday-num--today': cell.dateKey === todayKey, 'cal-wday-num--exam': cell.dateKey === examDate }">
                   {{ cell.day }}
                 </div>
-                <div v-if="isPast(cell.dateKey)" class="cal-wday-past-x" aria-hidden="true">×</div>
+                <div v-if="fullyDoneDays[cell.dateKey]" class="cal-wday-past-x" aria-hidden="true">×</div>
               </div>
               <!-- Bar region -->
               <div class="cal-wday-bar">
@@ -1737,6 +1833,12 @@ window.StudyApp = {
       chartTopicsData:  [],
       activeTab:        'calendar',
       completionStatus: {},
+      lockedDays: {},
+      autoMarkPromptVisible: false,
+      manualMarkReminderVisible: false,
+      rescheduleFromPromptVisible: false,
+      unmarkedPastPromptVisible: false,
+      lastTrackedDate: null,
       overflowExpanded: false,
       overflowEditSchedule: false,
       overflowEditDate: false,
@@ -1754,7 +1856,8 @@ window.StudyApp = {
       currentCalMonth:    null,
       currentCalWeekStart: null,
       calViewMode:        'month',   // 'month' | 'week'
-      calendarPopover:    null,
+      calendarPopover:     null,
+      dayDetailCollapsed:  false,
 
       // Chart tooltip
       tooltip:  null,
@@ -2033,6 +2136,20 @@ window.StudyApp = {
 
     todayKey() {
       return this.simulatedToday || new Date().toISOString().slice(0, 10);
+    },
+
+    fullyDoneDays() {
+      const status = this.completionStatus;
+      const result = {};
+      for (const d of this.hydratedCalendar) {
+        const dk = d.date instanceof Date ? d.date.toISOString().slice(0,10) : String(d.date).slice(0,10);
+        if (!d.sessions || !d.sessions.length) continue;
+        const merged = this.mergeSessions(d.sessions);
+        if (merged.length > 0 && merged.every(b => status[this.sessionKey(dk, b)] === 'done')) {
+          result[dk] = true;
+        }
+      }
+      return result;
     },
 
     calendarMonthLabel() {
@@ -3225,7 +3342,8 @@ window.StudyApp = {
     calCellClick(cell) {
       if (!cell) { this.calendarPopover = null; return; }
       if (!this.trackingMode && !cell.sessions.length) { this.calendarPopover = null; return; }
-      this.calendarPopover = this.calendarPopover?.dateKey === cell.dateKey ? null : cell;
+      this.calendarPopover = cell;
+      this.dayDetailCollapsed = false;
     },
 
     // ── Day-by-day collapse ─────────────────────────────────────────────────
@@ -3690,12 +3808,34 @@ window.StudyApp = {
       }
 
       // Restore tracking state
-      this.trackedBlockedDays = (saved.tracking?.blockedDays || []).slice();
-      this.trackingMode = true;
-      this.activePlanId = planId;
+      this.trackedBlockedDays  = (saved.tracking?.blockedDays || []).slice();
+      this.completionStatus    = saved.tracking?.completionStatus || {};
+      this.lockedDays          = saved.tracking?.lockedDays || {};
+      this.lastTrackedDate     = saved.tracking?.lastTrackedDate || null;
+      this.trackingMode  = true;
+      this.activePlanId  = planId;
 
-      // Auto-advance topic starting states based on what the plan scheduled before today
-      this.topics = this._autoAdvanceTopicStates(saved);
+      // Check if we need the auto-mark prompt
+      const yesterday = (() => {
+        const d = new Date(this.todayKey + 'T00:00:00Z');
+        d.setUTCDate(d.getUTCDate() - 1);
+        return d.toISOString().slice(0, 10);
+      })();
+      const toDkLocal = d => d.date instanceof Date ? d.date.toISOString().slice(0,10) : String(d.date).slice(0,10);
+      // When lastTrackedDate is known: gap exists if last check-in was before yesterday.
+      // When null (first open): gap exists only if the plan has sessions from before yesterday
+      // (i.e. started 2+ days ago) — a 1-day-old plan opened for the first time never prompts.
+      const gapExists = this.lastTrackedDate
+        ? this.lastTrackedDate < yesterday
+        : this.hydratedCalendar.some(d => toDkLocal(d) < yesterday && (d.sessions || []).length > 0);
+
+      if (gapExists) {
+        this.autoMarkPromptVisible = true;
+        // Don't auto-advance yet — wait for user response (confirmAutoMark / dismissAutoMark will call it)
+      } else {
+        this.autoMarkPromptVisible = false;
+        this.topics = this._autoAdvanceTopicStates(saved);
+      }
 
       // Expand and scroll to today in day-by-day
       this.expandedDays = { ...this.expandedDays, [this.todayKey]: true };
@@ -3725,6 +3865,7 @@ window.StudyApp = {
       this.trackingMode       = false;
       this.activePlanId       = null;
       this.trackedBlockedDays = [];
+      this.lockedDays         = {};
       this.navigate('home');
     },
 
@@ -3733,7 +3874,13 @@ window.StudyApp = {
       StudyStorage.clearCurrentPlan();
       this.planResult       = null;
       this.hydratedCalendar = [];
-      this.completionStatus = {};
+      this.completionStatus            = {};
+      this.lockedDays                  = {};
+      this.autoMarkPromptVisible       = false;
+      this.manualMarkReminderVisible   = false;
+      this.rescheduleFromPromptVisible = false;
+      this.unmarkedPastPromptVisible   = false;
+      this.lastTrackedDate             = null;
       this.calendarPopover  = null;
     },
 
@@ -3741,6 +3888,61 @@ window.StudyApp = {
 
     isBlockedDay(dateKey) {
       return this.trackedBlockedDays.includes(dateKey);
+    },
+
+    sessionKey(dateKey, block) {
+      const id = block.topicId != null ? block.topicId : block.activityType;
+      return `${dateKey}|${id}|${block.activityType}`;
+    },
+
+    isSessionDone(dateKey, block) {
+      return this.completionStatus[this.sessionKey(dateKey, block)] === 'done';
+    },
+
+    isSessionSkipped(dateKey, block) {
+      return this.completionStatus[this.sessionKey(dateKey, block)] === 'skip';
+    },
+
+    setSessionStatus(dateKey, block, status) {
+      if (this.lockedDays[dateKey]) return;
+      const key = this.sessionKey(dateKey, block);
+      const next = { ...this.completionStatus };
+      if (next[key] === status) {
+        delete next[key];
+      } else {
+        next[key] = status;
+      }
+      this.completionStatus = next;
+      this._savePlanToStorage();
+    },
+
+    _autoMarkPastDays() {
+      const today = this.todayKey;
+      const blocked = new Set(this.trackedBlockedDays);
+      const next = { ...this.completionStatus };
+      for (const d of this.hydratedCalendar) {
+        const dk = d.date instanceof Date ? d.date.toISOString().slice(0,10) : String(d.date).slice(0,10);
+        if (!dk || dk >= today || blocked.has(dk)) continue;
+        const merged = this.mergeSessions(d.sessions || []);
+        for (const block of merged) {
+          const key = this.sessionKey(dk, block);
+          if (next[key] === undefined) next[key] = 'done';
+        }
+      }
+      this.completionStatus = next;
+    },
+
+    confirmAutoMark() {
+      this._autoMarkPastDays();
+      this.topics = this._autoAdvanceTopicStates(StudyStorage.loadPlan(this.activePlanId));
+      this.autoMarkPromptVisible = false;
+      this._savePlanToStorage();
+    },
+
+    dismissAutoMark() {
+      this.topics = this._autoAdvanceTopicStates(StudyStorage.loadPlan(this.activePlanId));
+      this.autoMarkPromptVisible = false;
+      this.manualMarkReminderVisible = true;
     },
 
     isBreakDay(dateKey) {
@@ -3758,33 +3960,101 @@ window.StudyApp = {
 
     // ── Tracking: recalculate ───────────────────────────────────────────────
 
-    doRecalculate() {
+    _nextDay(dateKey) {
+      const d = new Date(dateKey + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + 1);
+      return d.toISOString().slice(0, 10);
+    },
+
+    _hasUnmarkedPastActivities() {
+      const today   = this.todayKey;
+      const blocked = new Set(this.trackedBlockedDays);
+      for (const d of this.hydratedCalendar) {
+        const dk = d.date instanceof Date ? d.date.toISOString().slice(0,10) : String(d.date).slice(0,10);
+        if (!dk || dk >= today || blocked.has(dk)) continue;
+        for (const block of this.mergeSessions(d.sessions || [])) {
+          if (!this.completionStatus[this.sessionKey(dk, block)]) return true;
+        }
+      }
+      return false;
+    },
+
+    doApplyAndUpdate() {
       if (!this.activePlanId) return;
+
+      // Step 1: ensure all past activities have a status before proceeding
+      if (this._hasUnmarkedPastActivities()) {
+        this.unmarkedPastPromptVisible = true;
+        return;
+      }
+
+      this._checkTodayAndProceed();
+    },
+
+    // Auto-mark all unmarked past activities as done, then continue
+    confirmAutoMarkPast() {
+      this._autoMarkPastDays();
+      this.unmarkedPastPromptVisible = false;
+      this._checkTodayAndProceed();
+    },
+
+    dismissUnmarkedPastPrompt() {
+      this.unmarkedPastPromptVisible = false;
+    },
+
+    _checkTodayAndProceed() {
+      const todayEntry = this.hydratedCalendar.find(d => {
+        const dk = d.date instanceof Date ? d.date.toISOString().slice(0,10) : String(d.date).slice(0,10);
+        return dk === this.todayKey;
+      });
+      const todayBlocks = todayEntry ? this.mergeSessions(todayEntry.sessions || []) : [];
+
+      if (todayBlocks.length === 0) {
+        this._executeApplyAndUpdate(this.todayKey);
+        return;
+      }
+
+      const allTodayDone = todayBlocks.every(b => this.isSessionDone(this.todayKey, b));
+      if (allTodayDone) {
+        this._executeApplyAndUpdate(this._nextDay(this.todayKey));
+        return;
+      }
+
+      this.rescheduleFromPromptVisible = true;
+    },
+
+    confirmRescheduleFromToday() {
+      this.rescheduleFromPromptVisible = false;
+      this._executeApplyAndUpdate(this.todayKey);
+    },
+
+    confirmRescheduleFromTomorrow() {
+      this.rescheduleFromPromptVisible = false;
+      this._executeApplyAndUpdate(this._nextDay(this.todayKey));
+    },
+
+    _executeApplyAndUpdate(effectiveStartDate) {
       const saved = StudyStorage.loadPlan(this.activePlanId);
       if (!saved) { this.error = 'Could not load plan for recalculation.'; return; }
 
       this.loading    = true;
-      this.loadingMsg = 'Recalculating plan from today…';
+      this.loadingMsg = 'Recalculating plan…';
       this.error      = null;
 
       setTimeout(() => {
         try {
-          // Auto-advance topic states based on what the current plan scheduled before today
           const advancedTopics = this._autoAdvanceTopicStates(saved);
-          this.topics = advancedTopics;
+          this.topics    = advancedTopics;
+          this.startDate = effectiveStartDate;
 
-          // Set start date to today
-          this.startDate = this.todayKey;
-
-          // Build plan config with blocked days
           const srIntervals = this.settingsSrText
             .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
           const config = {
             topics: advancedTopics.filter(t => !t.isGroup).map(t => ({
               id: t.id, name: t.title, difficulty: t.difficulty, startingState: t.startingState,
             })),
-            startDate:           new Date(this.todayKey + 'T00:00:00Z'),
-            examDate:            new Date(this.examDate  + 'T00:00:00Z'),
+            startDate:           new Date(effectiveStartDate + 'T00:00:00Z'),
+            examDate:            new Date(this.examDate + 'T00:00:00Z'),
             firstWeek:           this.firstWeek,
             lastWeek:            this.lastWeekComputed,
             rampMode:            this.rampMode,
@@ -3802,8 +4072,36 @@ window.StudyApp = {
             },
           };
 
+          // Preserve past entries only if they have at least one explicitly-marked session
+          // (done or skip). Days with no status entries are "limbo" days from a prior
+          // recalculation — the new plan will reschedule them, so including them here
+          // would create duplicates.
+          const toDk = d => d.date instanceof Date ? d.date.toISOString().slice(0,10) : String(d.date).slice(0,10);
+          const pastHydrated = this.hydratedCalendar.filter(d => {
+            const dk = toDk(d);
+            if (dk >= effectiveStartDate) return false;
+            const merged = this.mergeSessions(d.sessions || []);
+            return merged.some(b => this.completionStatus[this.sessionKey(dk, b)] !== undefined);
+          });
+
+          // Lock all preserved past days — their statuses are now permanent
+          const newLocks = {};
+          for (const d of pastHydrated) newLocks[toDk(d)] = true;
+          this.lockedDays = { ...this.lockedDays, ...newLocks };
+
           const result = StudyPlanner.generatePlan(config);
           this._applyPlanResult(result);
+
+          // Splice preserved past entries back in
+          this.hydratedCalendar = [
+            ...pastHydrated,
+            ...this.hydratedCalendar,
+          ].sort((a, b) => toDk(a).localeCompare(toDk(b)));
+
+          // Update lastTrackedDate on successful apply
+          this.lastTrackedDate = this.todayKey;
+          this._savePlanToStorage();
+
           this.activeTab = 'calendar';
           this.$nextTick(() => {
             this.renderChart();
@@ -3819,39 +4117,40 @@ window.StudyApp = {
 
     _autoAdvanceTopicStates(savedPlan) {
       const today      = this.todayKey;
-      const blockedSet = new Set(this.trackedBlockedDays);
       const calendar   = savedPlan?.planResult?.calendar || this.hydratedCalendar;
       const baseTopics = savedPlan?.inputs?.topics || [];
       const baseById   = {};
       baseTopics.forEach(t => { baseById[t.id] = t; });
 
-      const learnBefore    = {};
-      const practiceBefore = {};
+      const learnDone    = {};
+      const practiceDone = {};
 
       for (const day of calendar) {
         const dk = day.date instanceof Date
           ? day.date.toISOString().slice(0, 10)
           : (typeof day.date === 'string' ? day.date.slice(0, 10) : '');
         if (!dk || dk >= today) continue;
-        if (blockedSet.has(dk)) continue;
-        for (const s of (day.sessions || [])) {
-          if (!s.topicId) continue;
-          if (s.activityType === 'learn')    learnBefore[s.topicId]    = (learnBefore[s.topicId]    || 0) + 1;
-          if (s.activityType === 'practice') practiceBefore[s.topicId] = (practiceBefore[s.topicId] || 0) + 1;
+        const merged = this.mergeSessions(day.sessions || []);
+        for (const block of merged) {
+          if (!block.topicId) continue;
+          if (this.completionStatus[this.sessionKey(dk, block)] !== 'done') continue;
+          if (block.activityType === 'learn')
+            learnDone[block.topicId] = (learnDone[block.topicId] || 0) + block.count;
+          if (block.activityType === 'practice')
+            practiceDone[block.topicId] = (practiceDone[block.topicId] || 0) + block.count;
         }
       }
 
       return this.topics.map(t => {
         if (t.isGroup) return t;
-        const base     = baseById[t.id];
+        const base      = baseById[t.id];
         const origState = base?.startingState || t.startingState || 'Not Started';
         const LN = (this.settings.lnTable || {})[t.difficulty] || 2;
         const PN = (this.settings.pnTable || {})[t.difficulty] || 4;
 
-        let effectiveLN = learnBefore[t.id]    || 0;
-        let effectivePN = practiceBefore[t.id] || 0;
+        let effectiveLN = learnDone[t.id]    || 0;
+        let effectivePN = practiceDone[t.id] || 0;
 
-        // Credit for starting state at plan start
         if (origState === 'Learned'    || origState === 'Practicing' || origState === 'Reviewing') effectiveLN = LN;
         if (origState === 'Practicing') effectivePN += 1;
         if (origState === 'Reviewing')  effectivePN  = PN;
@@ -3862,7 +4161,6 @@ window.StudyApp = {
         else if (effectiveLN >= LN) newState = 'Learned';
         else                        newState = 'Not Started';
 
-        // Never regress below original starting state
         const ORDER = { 'Not Started': 0, 'Learned': 1, 'Practicing': 2, 'Reviewing': 3 };
         if ((ORDER[newState] || 0) < (ORDER[origState] || 0)) newState = origState;
 
@@ -3895,7 +4193,10 @@ window.StudyApp = {
         },
         planResult: this.planResult || existing.planResult,
         tracking: {
-          blockedDays: this.trackedBlockedDays,
+          blockedDays:      this.trackedBlockedDays,
+          completionStatus: this.completionStatus,
+          lockedDays:       this.lockedDays,
+          lastTrackedDate:  this.lastTrackedDate,
         },
       };
       StudyStorage.savePlan(this.activePlanId, planData);
