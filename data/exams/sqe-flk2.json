@@ -1,0 +1,111 @@
+{
+  "examId": "sqe-flk2",
+  "examName": "SQE1 – Functioning Legal Knowledge 2 (FLK2)",
+  "description": "SRA Solicitors Qualifying Examination – FLK2. Covers Trusts, Land Law, Property Practice, Criminal Law and Practice, Solicitor's Accounts, and Wills and Administration of Estates. Difficulty ratings based on depth of SRA syllabus, number of subtopics, and typical candidate study patterns.",
+  "studyHoursNeeded": "240",
+  "settings": {
+    "mockDuration":            90,
+    "learningMode":            "sequential",
+    "maxNewTopicsPerDay":      4,
+    "postMockSameDay":         true,
+    "maxDaysBetweenPractice":  7,
+    "lnTable":     { "easy": 1, "medium": 2, "hard": 3 },
+    "pnTable":     { "easy": 3, "medium": 4, "hard": 5 },
+    "srIntervals": [1, 6, 16, 45, 131],
+    "numMocks":    3
+  },
+  "topics": [
+    {
+      "title": "Trusts",
+      "subTopics": [
+        { "title": "The Nature and Classification of Trusts", "difficulty": "medium" },
+        { "title": "Creation of Express Trusts", "difficulty": "hard" },
+        { "title": "Beneficial Interests Under Trusts", "difficulty": "hard" },
+        { "title": "Resulting Trusts", "difficulty": "hard" },
+        { "title": "Trusts of the Family Home", "difficulty": "hard" },
+        { "title": "Charitable Trusts", "difficulty": "medium" },
+        { "title": "Non-Charitable Purpose Trusts", "difficulty": "hard" },
+        { "title": "Trustees: Appointment, Retirement and Removal", "difficulty": "medium" },
+        { "title": "Trustees' Duties", "difficulty": "hard" },
+        { "title": "Trustees' Powers", "difficulty": "medium" },
+        { "title": "Breach of Trust and Trustees' Liability", "difficulty": "hard" },
+        { "title": "Liability of Strangers to the Trust", "difficulty": "hard" },
+        { "title": "Equitable Remedies", "difficulty": "medium" },
+        { "title": "Co-ownership of Land", "difficulty": "medium" },
+        { "title": "Leases", "difficulty": "medium" },
+        { "title": "Ethical Considerations in Trust Law Practice", "difficulty": "easy" }
+      ]
+    },
+    {
+      "title": "Land Law",
+      "subTopics": [
+        { "title": "Co-ownership and Trusts", "difficulty": "hard" },
+        { "title": "Proprietary Rights", "difficulty": "hard" },
+        { "title": "Leases", "difficulty": "medium" },
+        { "title": "Core Principles of Trust Law", "difficulty": "medium" }
+      ]
+    },
+    {
+      "title": "Property Practice",
+      "subTopics": [
+        { "title": "Preliminary Stages—Instructions, Client Care, and Title Investigation", "difficulty": "medium" },
+        { "title": "Pre-Contract Searches, Enquiries, and Finance", "difficulty": "medium" },
+        { "title": "Exchange of Contracts and Pre-Completion", "difficulty": "medium" },
+        { "title": "Completion, Post-Completion, and Remedies for Delayed Completion", "difficulty": "medium" },
+        { "title": "Leasehold Fundamentals—Structure, Grant, and Assignment", "difficulty": "hard" },
+        { "title": "Licences, Covenants, and Remedies in Leaseholds", "difficulty": "hard" },
+        { "title": "Termination of Leases and Security of Tenure", "difficulty": "hard" },
+        { "title": "Core Principles of Planning Law", "difficulty": "medium" },
+        { "title": "Property Taxation", "difficulty": "hard" }
+      ]
+    },
+    {
+      "title": "Criminal Law and Practice",
+      "subTopics": [
+        { "title": "Core Principles of Criminal Liability", "difficulty": "medium" },
+        { "title": "Parties to an Offence and Inchoate Offences", "difficulty": "medium" },
+        { "title": "Offences Against the Person", "difficulty": "medium" },
+        { "title": "Theft and Property Offences", "difficulty": "medium" },
+        { "title": "Fraud Offences (Fraud Act 2006)", "difficulty": "medium" },
+        { "title": "Criminal Damage", "difficulty": "easy" },
+        { "title": "Homicide Offences", "difficulty": "medium" },
+        { "title": "General Defences in Criminal Law", "difficulty": "medium" },
+        { "title": "Police Powers and Suspects' Rights at the Police Station", "difficulty": "medium" },
+        { "title": "Bail and Remand", "difficulty": "medium" },
+        { "title": "First Hearings and Preliminary Matters in the Magistrates' Court", "difficulty": "medium" },
+        { "title": "Allocation and Sending of Cases to the Crown Court", "difficulty": "medium" },
+        { "title": "Case Management and Pre-Trial Procedures", "difficulty": "medium" },
+        { "title": "Law of Evidence in Criminal Proceedings", "difficulty": "hard" },
+        { "title": "Trial Procedure in the Magistrates' Court and Crown Court", "difficulty": "medium" },
+        { "title": "Sentencing", "difficulty": "hard" },
+        { "title": "Appeals and Post-Conviction Procedures", "difficulty": "medium" },
+        { "title": "Youth Court Procedure", "difficulty": "medium" }
+      ]
+    },
+    {
+      "title": "Solicitor's Accounts",
+      "subTopics": [
+        { "title": "Regulatory Framework and Ethical Obligations", "difficulty": "easy" },
+        { "title": "Client Money", "difficulty": "medium" },
+        { "title": "Client Account", "difficulty": "medium" },
+        { "title": "Separation of Client Money and Firm Money", "difficulty": "medium" },
+        { "title": "Interest on Client Money", "difficulty": "medium" },
+        { "title": "Breaches of the SRA Accounts Rules", "difficulty": "hard" },
+        { "title": "Client Ledger Records, Reconciliations, and Billing", "difficulty": "hard" }
+      ]
+    },
+    {
+      "title": "Wills and Administration of Estates",
+      "subTopics": [
+        { "title": "Validity of Wills and Codicils", "difficulty": "medium" },
+        { "title": "Personal Representatives", "difficulty": "medium" },
+        { "title": "Alterations and Revocation of Wills", "difficulty": "medium" },
+        { "title": "Interpretation of Wills and Intestacy", "difficulty": "medium" },
+        { "title": "Property Passing Outside the Estate", "difficulty": "medium" },
+        { "title": "Grants of Representation and Probate Procedure", "difficulty": "medium" },
+        { "title": "Administration of Estates and Distribution", "difficulty": "medium" },
+        { "title": "Taxation of Wills and Estates", "difficulty": "hard" }
+      ]
+    }
+  ]
+}

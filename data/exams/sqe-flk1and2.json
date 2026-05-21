@@ -1,0 +1,167 @@
+{
+  "examId": "sqe-flk1and2",
+  "examName": "SQE1 – Full Functioning Legal Knowledge (FLK1 & FLK2)",
+  "description": "SRA Solicitors Qualifying Examination – combined FLK1 and FLK2. Covers all SQE1 functioning legal knowledge: Business Law and Practice, Dispute Resolution, Contract Law, Tort, The Legal System, Trusts, Land Law, Property Practice, Criminal Law and Practice, Solicitor's Accounts, and Wills and Administration of Estates.",
+  "studyHoursNeeded": "440",
+  "settings": {
+    "mockDuration":            90,
+    "learningMode":            "sequential",
+    "maxNewTopicsPerDay":      4,
+    "postMockSameDay":         true,
+    "maxDaysBetweenPractice":  7,
+    "lnTable":     { "easy": 1, "medium": 2, "hard": 3 },
+    "pnTable":     { "easy": 3, "medium": 4, "hard": 5 },
+    "srIntervals": [1, 6, 16, 45, 131],
+    "numMocks":    3
+  },
+  "topics": [
+    {
+      "title": "Business Law and Practice",
+      "subTopics": [
+        { "title": "Business Organisations and Formation", "difficulty": "medium" },
+        { "title": "Corporate Governance and Compliance", "difficulty": "medium" },
+        { "title": "Partnership and LLP Governance", "difficulty": "medium" },
+        { "title": "Business Finance and Security", "difficulty": "hard" },
+        { "title": "Insolvency (Corporate and Personal)", "difficulty": "hard" },
+        { "title": "Taxation of Businesses and Stakeholders", "difficulty": "hard" },
+        { "title": "Termination of a Solvent Business", "difficulty": "medium" },
+        { "title": "Professional Conduct and Ethical Obligations", "difficulty": "easy" }
+      ]
+    },
+    {
+      "title": "Tort",
+      "subTopics": [
+        { "title": "Principles of Tort", "difficulty": "easy" },
+        { "title": "Defences in Tort", "difficulty": "medium" },
+        { "title": "Vicarious Liability", "difficulty": "medium" },
+        { "title": "Occupiers' Liability", "difficulty": "easy" },
+        { "title": "Product Liability", "difficulty": "medium" },
+        { "title": "Nuisance and the Rule in Rylands v Fletcher", "difficulty": "medium" }
+      ]
+    },
+    {
+      "title": "Dispute Resolution",
+      "subTopics": [
+        { "title": "Introduction to Dispute Resolution Options", "difficulty": "easy" },
+        { "title": "Pre-Action Considerations and Steps", "difficulty": "medium" },
+        { "title": "Commencing and Responding to a Claim", "difficulty": "medium" },
+        { "title": "Case Management and Interim Applications", "difficulty": "medium" },
+        { "title": "Evidence and Disclosure", "difficulty": "hard" },
+        { "title": "Trial and Post-Trial Procedures", "difficulty": "medium" },
+        { "title": "Costs and Funding in Dispute Resolution", "difficulty": "hard" }
+      ]
+    },
+    {
+      "title": "Contract Law",
+      "subTopics": [
+        { "title": "Formation of a Contract", "difficulty": "easy" },
+        { "title": "Parties to a Contract", "difficulty": "medium" },
+        { "title": "Contract Terms", "difficulty": "medium" },
+        { "title": "Vitiating Factors", "difficulty": "hard" },
+        { "title": "Termination of a Contract", "difficulty": "medium" },
+        { "title": "Remedies", "difficulty": "medium" },
+        { "title": "Causation and Remoteness", "difficulty": "medium" }
+      ]
+    },
+    {
+      "title": "The Legal System",
+      "subTopics": [
+        { "title": "The Legal System of England and Wales and Sources of Law", "difficulty": "easy" },
+        { "title": "Constitutional and Administrative Law and EU Law", "difficulty": "medium" },
+        { "title": "Legal Services", "difficulty": "easy" }
+      ]
+    },
+    {
+      "title": "Trusts",
+      "subTopics": [
+        { "title": "The Nature and Classification of Trusts", "difficulty": "medium" },
+        { "title": "Creation of Express Trusts", "difficulty": "hard" },
+        { "title": "Beneficial Interests Under Trusts", "difficulty": "hard" },
+        { "title": "Resulting Trusts", "difficulty": "hard" },
+        { "title": "Trusts of the Family Home", "difficulty": "hard" },
+        { "title": "Charitable Trusts", "difficulty": "medium" },
+        { "title": "Non-Charitable Purpose Trusts", "difficulty": "hard" },
+        { "title": "Trustees: Appointment, Retirement and Removal", "difficulty": "medium" },
+        { "title": "Trustees' Duties", "difficulty": "hard" },
+        { "title": "Trustees' Powers", "difficulty": "medium" },
+        { "title": "Breach of Trust and Trustees' Liability", "difficulty": "hard" },
+        { "title": "Liability of Strangers to the Trust", "difficulty": "hard" },
+        { "title": "Equitable Remedies", "difficulty": "medium" },
+        { "title": "Co-ownership of Land", "difficulty": "medium" },
+        { "title": "Leases", "difficulty": "medium" },
+        { "title": "Ethical Considerations in Trust Law Practice", "difficulty": "easy" }
+      ]
+    },
+    {
+      "title": "Land Law",
+      "subTopics": [
+        { "title": "Co-ownership and Trusts", "difficulty": "hard" },
+        { "title": "Proprietary Rights", "difficulty": "hard" },
+        { "title": "Leases", "difficulty": "medium" },
+        { "title": "Core Principles of Trust Law", "difficulty": "medium" }
+      ]
+    },
+    {
+      "title": "Property Practice",
+      "subTopics": [
+        { "title": "Preliminary Stages—Instructions, Client Care, and Title Investigation", "difficulty": "medium" },
+        { "title": "Pre-Contract Searches, Enquiries, and Finance", "difficulty": "medium" },
+        { "title": "Exchange of Contracts and Pre-Completion", "difficulty": "medium" },
+        { "title": "Completion, Post-Completion, and Remedies for Delayed Completion", "difficulty": "medium" },
+        { "title": "Leasehold Fundamentals—Structure, Grant, and Assignment", "difficulty": "hard" },
+        { "title": "Licences, Covenants, and Remedies in Leaseholds", "difficulty": "hard" },
+        { "title": "Termination of Leases and Security of Tenure", "difficulty": "hard" },
+        { "title": "Core Principles of Planning Law", "difficulty": "medium" },
+        { "title": "Property Taxation", "difficulty": "hard" }
+      ]
+    },
+    {
+      "title": "Criminal Law and Practice",
+      "subTopics": [
+        { "title": "Core Principles of Criminal Liability", "difficulty": "medium" },
+        { "title": "Parties to an Offence and Inchoate Offences", "difficulty": "medium" },
+        { "title": "Offences Against the Person", "difficulty": "medium" },
+        { "title": "Theft and Property Offences", "difficulty": "medium" },
+        { "title": "Fraud Offences (Fraud Act 2006)", "difficulty": "medium" },
+        { "title": "Criminal Damage", "difficulty": "easy" },
+        { "title": "Homicide Offences", "difficulty": "medium" },
+        { "title": "General Defences in Criminal Law", "difficulty": "medium" },
+        { "title": "Police Powers and Suspects' Rights at the Police Station", "difficulty": "medium" },
+        { "title": "Bail and Remand", "difficulty": "medium" },
+        { "title": "First Hearings and Preliminary Matters in the Magistrates' Court", "difficulty": "medium" },
+        { "title": "Allocation and Sending of Cases to the Crown Court", "difficulty": "medium" },
+        { "title": "Case Management and Pre-Trial Procedures", "difficulty": "medium" },
+        { "title": "Law of Evidence in Criminal Proceedings", "difficulty": "hard" },
+        { "title": "Trial Procedure in the Magistrates' Court and Crown Court", "difficulty": "medium" },
+        { "title": "Sentencing", "difficulty": "hard" },
+        { "title": "Appeals and Post-Conviction Procedures", "difficulty": "medium" },
+        { "title": "Youth Court Procedure", "difficulty": "medium" }
+      ]
+    },
+    {
+      "title": "Solicitor's Accounts",
+      "subTopics": [
+        { "title": "Regulatory Framework and Ethical Obligations", "difficulty": "easy" },
+        { "title": "Client Money", "difficulty": "medium" },
+        { "title": "Client Account", "difficulty": "medium" },
+        { "title": "Separation of Client Money and Firm Money", "difficulty": "medium" },
+        { "title": "Interest on Client Money", "difficulty": "medium" },
+        { "title": "Breaches of the SRA Accounts Rules", "difficulty": "hard" },
+        { "title": "Client Ledger Records, Reconciliations, and Billing", "difficulty": "hard" }
+      ]
+    },
+    {
+      "title": "Wills and Administration of Estates",
+      "subTopics": [
+        { "title": "Validity of Wills and Codicils", "difficulty": "medium" },
+        { "title": "Personal Representatives", "difficulty": "medium" },
+        { "title": "Alterations and Revocation of Wills", "difficulty": "medium" },
+        { "title": "Interpretation of Wills and Intestacy", "difficulty": "medium" },
+        { "title": "Property Passing Outside the Estate", "difficulty": "medium" },
+        { "title": "Grants of Representation and Probate Procedure", "difficulty": "medium" },
+        { "title": "Administration of Estates and Distribution", "difficulty": "medium" },
+        { "title": "Taxation of Wills and Estates", "difficulty": "hard" }
+      ]
+    }
+  ]
+}

@@ -3,6 +3,17 @@
   "examName": "CFA Level 1",
   "description": "CFA Institute Level 1 Examination. Difficulty ratings based on typical candidate experience and CFA Institute curriculum depth.",
   "studyHoursNeeded": "300",
+  "settings": {
+    "mockDuration":            90,
+    "learningMode":            "sequential",
+    "maxNewTopicsPerDay":      4,
+    "postMockSameDay":         true,
+    "maxDaysBetweenPractice":  7,
+    "lnTable":     { "easy": 1, "medium": 2, "hard": 3 },
+    "pnTable":     { "easy": 3, "medium": 4, "hard": 5 },
+    "srIntervals": [1, 6, 16, 45, 131],
+    "numMocks":    3
+  },
   "topics": [
     {
       "title": "Financial Statement Analysis",

@@ -1376,7 +1376,7 @@ window.StudyApp = {
 
       <!-- Post-generation prompt -->
       <div class="alert alert-info" style="margin-top:24px">
-        Happy with this plan? Save it using the buttons above, or use ⚙ Edit Study Plan to adjust topics, schedule, or exam date.
+        Use ⚙ Edit Study Plan to adjust topics, schedule, exam date, or even save the plan as a CSV file.
       </div>
     </template>
 
@@ -2984,6 +2984,10 @@ window.StudyApp = {
           // Predefined exam: load from JSON, no AI topic-generation call needed
           this.loadingMsg = `Loading ${this.selectedPredefinedExam.name}…`;
           const examData = await StudyExams.loadExam(this.selectedPredefinedExam.id);
+
+          // Apply exam-specific settings (overrides localStorage/defaults for this session)
+          if (examData.settings) this._applyExamSettings(examData.settings);
+
           const rawHrs = examData.studyHoursNeeded;
           this.recommendedStudyHours = rawHrs != null ? (parseInt(rawHrs, 10) || null) : null;
           this.recommendedHoursApplied = false;
@@ -3292,6 +3296,14 @@ window.StudyApp = {
       const next = {};
       ids.forEach(id => { next[id] = collapse; });
       this.collapsedGroups = next;
+    },
+
+    _applyExamSettings(s) {
+      const KEYS = ['mockDuration', 'learningMode', 'maxNewTopicsPerDay', 'postMockSameDay',
+                    'maxDaysBetweenPractice', 'lnTable', 'pnTable', 'srIntervals'];
+      KEYS.forEach(k => { if (s[k] !== undefined) this.settings[k] = s[k]; });
+      if (typeof s.numMocks === 'number' && s.numMocks >= 0) this.numMocks = s.numMocks;
+      this.settingsSrText = (this.settings.srIntervals || [1,6,16,45,131]).join(', ');
     },
 
     setAllTopicsLearn(checked) {
@@ -4834,6 +4846,19 @@ window.StudyApp = {
       StudyExams.loadIndex()
         .then(list => { this.predefinedExams = list || []; })
         .catch(() => {});
+
+      // For user_defined mode, apply data/settings.json as the scheduling defaults
+      if (this.entryMode === 'full') {
+        StudyExams.loadGlobalSettings()
+          .then(s => {
+            if (s) {
+              StudyStorage.setDefaults(s);
+              this.settings = StudyStorage.loadSettings();
+              this.settingsSrText = (this.settings.srIntervals || [1,6,16,45,131]).join(', ');
+            }
+          })
+          .catch(() => {});
+      }
     }
 
     // Restore in-progress plan from localStorage if present

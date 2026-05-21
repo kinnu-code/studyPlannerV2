@@ -27,6 +27,20 @@
     { id: 'cfa-level-1', name: 'CFA Level 1', description: 'CFA Institute Level 1 Examination' },
   ];
 
+  // ─── Built-in global settings (fallback when data/settings.json is unavailable) ─
+
+  const BUILT_IN_GLOBAL_SETTINGS = {
+    mockDuration:           90,
+    learningMode:           'sequential',
+    maxNewTopicsPerDay:     4,
+    postMockSameDay:        true,
+    maxDaysBetweenPractice: 7,
+    lnTable:     { easy: 1, medium: 2, hard: 3 },
+    pnTable:     { easy: 3, medium: 4, hard: 5 },
+    srIntervals: [1, 6, 16, 45, 131],
+    numMocks:    3,
+  };
+
   // ─── Built-in exam topic data ───────────────────────────────────────────────
 
   const BUILT_IN_DATA = {
@@ -35,6 +49,17 @@
       examName: 'CFA Level 1',
       description: 'CFA Institute Level 1 Examination. Difficulty based on CFA curriculum depth and typical candidate experience.',
       studyHoursNeeded: 300,
+      settings: {
+        mockDuration:           90,
+        learningMode:           'sequential',
+        maxNewTopicsPerDay:     4,
+        postMockSameDay:        true,
+        maxDaysBetweenPractice: 7,
+        lnTable:     { easy: 1, medium: 2, hard: 3 },
+        pnTable:     { easy: 3, medium: 4, hard: 5 },
+        srIntervals: [1, 6, 16, 45, 131],
+        numMocks:    3,
+      },
       topics: [
         { title: 'Ethical and Professional Standards', subTopics: [
           { title: 'The Profession', difficulty: 'easy' },
@@ -175,5 +200,14 @@
     throw new Error(`Exam "${examId}" not found`);
   }
 
-  return { loadIndex, loadExam };
+  async function loadGlobalSettings() {
+    // Try fetch first; fall back to built-in copy
+    try {
+      const res = await fetch(`data/settings.json?v=${Date.now()}`);
+      if (res.ok) return res.json();
+    } catch (_) {}
+    return BUILT_IN_GLOBAL_SETTINGS;
+  }
+
+  return { loadIndex, loadExam, loadGlobalSettings };
 }));
