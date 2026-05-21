@@ -25,25 +25,35 @@ const RECENT_MODELS = [
 // lastNum:  session number where this block ends
 // total:    total sessions of this type for the topic
 
-function learnReasonText(firstNum, lastNum, total, title) {
+function learnReasonText(firstNum, lastNum, total) {
   const pct = Math.round(lastNum / (total || 1) * 100 / 5) * 5;
-  if (pct >= 100) return `Finish learning all of ${title}`;
-  return firstNum <= 1
-    ? `learn up to ${pct}% of ${title}`
-    : `continue learning up to ${pct}% of ${title}`;
+  if (pct >= 100) return 'Finish learning 100% of this topic';
+  if (firstNum <= 1) return `Learn the first ${pct}% of this topic`;
+  return `Continue learning and complete ${pct}% of this topic`;
 }
 
-function practiceReasonText(firstNum, lastNum, total, title) {
+function practiceReasonText(firstNum, lastNum, total) {
   const pct = Math.round(lastNum / (total || 1) * 100 / 5) * 5;
-  if (pct >= 100) return `Finish practicing all of ${title}`;
-  return firstNum <= 1
-    ? `practice up to ${pct}% of ${title}`
-    : `continue practicing up to ${pct}% of ${title}`;
+  const displayPct = Math.min(pct, 100);
+  return `Complete ${displayPct}% of the MCQs for this topic`;
+}
+
+// ─── Topic phase helpers ──────────────────────────────────────────────────────
+
+function phasesFromState(startingState) {
+  const s = startingState || 'Not Started';
+  return {
+    enabled:    true,
+    doLearn:    s === 'Not Started',
+    doPractice: s !== 'Reviewing',
+    doRevise:   true,
+  };
 }
 
 // ─── Hydrate calendar: add topicTitle and reason to each session ──────────────
 
-function hydrateCalendar(calendar, planTopics, mocks) {
+function hydrateCalendar(calendar, planTopics, mocks, sessionMins) {
+  sessionMins = sessionMins || 20;
   const topicMap = {};
   const stateMap = {};
   planTopics.forEach(t => {
@@ -97,7 +107,7 @@ function hydrateCalendar(calendar, planTopics, mocks) {
         mcqCount[s.topicId] = (mcqCount[s.topicId] || 0) + 1;
         const num   = mcqCount[s.topicId];
         const total = stateMap[s.topicId]?.totalPN || 1;
-        reason = practiceReasonText(num, num, total, title);
+        reason = practiceReasonText(num, num, total);
         return { ...s, topicTitle: title, reason, _mcqNum: num, totalPN: total };
       }
 
@@ -105,10 +115,10 @@ function hydrateCalendar(calendar, planTopics, mocks) {
         learnCount[s.topicId] = (learnCount[s.topicId] || 0) + 1;
         const num   = learnCount[s.topicId];
         const total = stateMap[s.topicId]?.totalLN || 1;
-        reason = learnReasonText(num, num, total, title);
+        reason = learnReasonText(num, num, total);
         return { ...s, topicTitle: title, reason, _lnNum: num, totalLN: total };
       } else if (s.activityType === 'review') {
-        reason = `Spaced review of ${title} (revision ${s.reviewIndex !== undefined ? s.reviewIndex + 1 : '?'})`;
+        reason = `Revise this topic — at least ${sessionMins} min`;
       }
 
       return { ...s, topicTitle: title, reason };
@@ -139,11 +149,11 @@ function mergeSessionsWithRanges(sessions) {
   for (const block of out) {
     if (block.activityType === 'practice' && block.count > 1 && block._mcqNum != null) {
       const last  = block._lastMcqNum ?? (block._mcqNum + block.count - 1);
-      block.reason = practiceReasonText(block._mcqNum, last, block.totalPN ?? 1, block.topicTitle);
+      block.reason = practiceReasonText(block._mcqNum, last, block.totalPN ?? 1);
     }
     if (block.activityType === 'learn' && block.count > 1 && block._lnNum != null) {
       const last  = block._lastLnNum ?? (block._lnNum + block.count - 1);
-      block.reason = learnReasonText(block._lnNum, last, block.totalLN ?? 1, block.topicTitle);
+      block.reason = learnReasonText(block._lnNum, last, block.totalLN ?? 1);
     }
   }
   return out;
@@ -326,14 +336,14 @@ window.StudyApp = {
             <div class="plan-list-actions">
               <button class="btn btn-primary btn-sm" @click="doTrackPlan(plan.id)">▶ Track</button>
               <button class="btn btn-ghost btn-sm" @click="doDeletePlan(plan.id)"
-                      style="color:var(--c-error)">🗑 Delete</button>
+                      style="color:var(--c-danger)">🗑 Delete</button>
             </div>
           </div>
         </div>
       </div>
       <div class="action-bar">
-        <button class="btn btn-secondary" @click="goBack()">← Back</button>
-        <button v-if="savedPlans.length > 0" class="btn btn-sm" style="border-color:var(--c-error);color:var(--c-error);margin-left:auto" @click="doDeleteAllPlans()">
+        <button class="btn btn-secondary" style="margin-right:auto" @click="goBack()">← Back</button>
+        <button v-if="savedPlans.length > 0" class="btn btn-sm" style="border-color:var(--c-danger);color:var(--c-danger)" @click="doDeleteAllPlans()">
           🗑 Delete all plans
         </button>
       </div>
@@ -342,11 +352,11 @@ window.StudyApp = {
     <!-- ════════════════ STEP 1 — Topic Input ════════════════ -->
     <template v-else-if="!loading && screen === 'step1'">
       <div class="stepper">
-        <div class="step active"><div class="step-num">1</div><span class="step-label">Topic Input</span></div>
+        <div class="step active"><div class="step-num">1</div><span class="step-label">Exam Setup</span></div>
         <div class="step-connector"></div>
-        <div class="step"><div class="step-num">2</div><span class="step-label">Review Topics</span></div>
+        <div class="step"><div class="step-num">2</div><span class="step-label">Topics Setup</span></div>
         <div class="step-connector"></div>
-        <div class="step"><div class="step-num">3</div><span class="step-label">Schedule</span></div>
+        <div class="step"><div class="step-num">3</div><span class="step-label">Study Schedule</span></div>
         <div class="step-connector"></div>
         <div class="step"><div class="step-num">4</div><span class="step-label">Your Plan</span></div>
       </div>
@@ -356,7 +366,8 @@ window.StudyApp = {
           <div class="section-title">Topic Input</div>
           <div class="section-sub">Choose how you want to specify your topics.</div>
 
-          <div class="mode-cards">
+          <!-- Mode selector — hidden in restricted mode -->
+          <div v-if="!isRestrictedMode" class="mode-cards">
             <div class="mode-card" :class="{ selected: topicInputMode === 'examName' }"
                  @click="topicInputMode = 'examName'">
               <h4>Exam name only</h4>
@@ -369,8 +380,17 @@ window.StudyApp = {
             </div>
           </div>
 
-          <!-- Exam name field (mode 1) -->
-          <div class="form-group" v-if="topicInputMode === 'examName'">
+          <!-- Exam selector: restricted mode shows a dropdown (no free typing) -->
+          <div class="form-group" v-if="isRestrictedMode">
+            <label>Exam</label>
+            <select v-model="examName">
+              <option value="" disabled>Select an exam…</option>
+              <option v-for="exam in predefinedExams" :key="exam.id" :value="exam.name">{{ exam.name }}</option>
+            </select>
+          </div>
+
+          <!-- Exam name field — full mode only -->
+          <div class="form-group" v-if="!isRestrictedMode && topicInputMode === 'examName'">
             <label>Exam name</label>
             <input type="text" v-model="examName" list="exam-suggestions"
                    placeholder="e.g. CFA Level 1, SQE FLK1…"
@@ -383,8 +403,8 @@ window.StudyApp = {
             </span>
           </div>
 
-          <!-- Granular list (mode 3) -->
-          <div class="form-group" v-if="topicInputMode === 'granularList'">
+          <!-- Granular list — full mode only -->
+          <div class="form-group" v-if="!isRestrictedMode && topicInputMode === 'granularList'">
             <label>Topic list</label>
             <textarea v-model="granularTopicsText" rows="10"
               placeholder="# Contract Law&#10;  Contract Formation&#10;  Consideration&#10;  Terms of a Contract&#10;&#10;# Tort&#10;  Negligence&#10;  Psychiatric Injury&#10;&#10;Standalone Topic"></textarea>
@@ -395,20 +415,20 @@ window.StudyApp = {
           <div class="row">
             <div class="col">
               <div class="form-group">
-                <label>Study start date</label>
+                <label>When would you start studying?</label>
                 <input type="date" v-model="startDate" />
               </div>
             </div>
             <div class="col">
               <div class="form-group">
-                <label>Be ready by date</label>
+                <label>When do you need to be ready by?</label>
                 <input type="date" v-model="examDate" />
               </div>
             </div>
           </div>
 
-          <!-- Free text AI notes -->
-          <div class="form-group">
+          <!-- Free text AI notes — full mode only -->
+          <div class="form-group" v-if="!isRestrictedMode">
             <label>Additional notes for the AI <span style="font-weight:400;color:var(--c-muted)">(optional)</span></label>
             <div class="form-hint" style="margin-bottom:6px">
               You can describe your strengths, weak areas, what you've already studied, preferred study hours, and anything else relevant to your plan.
@@ -418,16 +438,16 @@ window.StudyApp = {
               placeholder="e.g. I struggle with derivatives. I find Financial Statement Analysis easy. I've already studied Ethics. Make sure to cover Fixed Income and Portfolio Management. Start with 1h/day and cram at the end. Limit to 40 topics."></textarea>
           </div>
 
-          <div class="alert alert-warn" v-if="!settings.apiKey && !(selectedPredefinedExam && !freeText.trim())">
+          <div class="alert alert-warn" v-if="!settings.apiKey && !(selectedPredefinedExam && !freeText.trim()) && !isRestrictedMode">
             No API key configured. <a href="#" @click.prevent="navigate('settings')">Set it in Settings</a> before generating topics.
             <span v-if="predefinedExams.length"> Predefined exams (like CFA Level 1) don't need an API key unless you add free-text notes.</span>
           </div>
 
           <div class="action-bar">
-            <button class="btn btn-secondary" @click="goBack()">Back</button>
+            <button class="btn btn-secondary" style="margin-right:auto" @click="goBack()">← Back</button>
             <button class="btn btn-primary btn-lg" @click="doGenerateTopics()"
                     :disabled="!canGenerateTopics">
-              Generate Topics →
+              Continue →
             </button>
           </div>
         </div>
@@ -437,18 +457,20 @@ window.StudyApp = {
     <!-- ════════════════ STEP 2 — Topics Review Table ════════════════ -->
     <template v-else-if="!loading && screen === 'step2'">
       <div class="stepper">
-        <div class="step done"><div class="step-num">✓</div><span class="step-label">Topic Input</span></div>
+        <div class="step done"><div class="step-num">✓</div><span class="step-label">Exam Setup</span></div>
         <div class="step-connector"></div>
-        <div class="step active"><div class="step-num">2</div><span class="step-label">Review Topics</span></div>
+        <div class="step active"><div class="step-num">2</div><span class="step-label">Topics Setup</span></div>
         <div class="step-connector"></div>
-        <div class="step"><div class="step-num">3</div><span class="step-label">Schedule</span></div>
+        <div class="step"><div class="step-num">3</div><span class="step-label">Study Schedule</span></div>
         <div class="step-connector"></div>
         <div class="step"><div class="step-num">4</div><span class="step-label">Your Plan</span></div>
       </div>
 
       <div class="card">
         <div class="card-body">
-          <div class="section-title">Review & Confirm Topics</div>
+          <div class="section-title">Choose Topics and Time Allocation</div>
+          <hr>
+          <div class="section-sub">Choose which topics to include, adjust their time allocation and<br>select the preparation you want to include in your plan</div>
 
           <!-- Applied-from-notes banner -->
           <div v-if="freeTextApplied.length" class="free-text-applied-banner">
@@ -464,27 +486,12 @@ window.StudyApp = {
             </div>
           </div>
 
-          <!-- State legend — shown above the table -->
-          <div class="state-legend" style="margin-bottom:12px">
-            <h4>Starting state guide</h4>
-            <table>
-              <thead><tr><th>State</th><th>Meaning</th><th>Scheduler behaviour</th></tr></thead>
-              <tbody>
-                <tr><td><strong>Not Started</strong></td><td>Topic not yet touched</td><td>Full pipeline: Learn → Practice → Reviews</td></tr>
-                <tr><td><strong>Learned</strong></td><td>Content studied, ready to practice</td><td>Skip learning; begin at Practice units</td></tr>
-                <tr><td><strong>Practicing</strong></td><td>One practice unit done</td><td>Skip learning; 1 practice unit already counted</td></tr>
-                <tr><td><strong>Reviewing</strong></td><td>All practice units done</td><td>Skip learning and practice; begin at first Review</td></tr>
-              </tbody>
-            </table>
-          </div>
-
           <!-- Top action bar -->
           <div class="action-bar" style="margin-bottom:12px">
-            <button class="btn btn-secondary" @click="goBack()">← Back</button>
-            <button v-if="planResult" class="btn btn-secondary" @click="navigate('step4')">Return to Plan</button>
+            <button class="btn btn-secondary" style="margin-right:auto" @click="goBack()">← Back</button>
             <button class="btn btn-primary btn-lg" @click="navigate('step3')"
-                    :disabled="topics.length === 0">
-              Confirm Topics →
+                    :disabled="topics.filter(t => !t.isGroup && t.enabled !== false).length === 0">
+              Continue →
             </button>
           </div>
 
@@ -503,11 +510,11 @@ window.StudyApp = {
             <table class="topics-table">
               <thead>
                 <tr>
-                  <th class="col-num">#</th>
+                  <th class="col-check"></th>
                   <th class="col-title">Topic</th>
-                  <th class="col-diff">Difficulty</th>
-                  <th class="col-state">Starting state</th>
-                  <th class="col-actions">Actions</th>
+                  <th class="col-diff">Time allocation</th>
+                  <th class="col-state">Areas of Preparation</th>
+                  <th class="col-actions">Order</th>
                 </tr>
               </thead>
               <tbody>
@@ -521,9 +528,13 @@ window.StudyApp = {
                       @dragover.prevent="onDragOver($event, idx)"
                       @drop.prevent="onDrop($event, idx)"
                       @dragend="onDragEnd">
-                    <td class="col-num" style="cursor:pointer;text-align:center;font-size:.8rem"
-                        @click="toggleGroupCollapse(topic.id)">
-                      {{ isGroupCollapsed(topic.id) ? '▶' : '▼' }}
+                    <td class="col-check col-check-group">
+                      <input type="checkbox"
+                             :checked="isGroupAllEnabled(topic.id)"
+                             @change="toggleGroupEnabled(topic.id, $event.target.checked)" />
+                      <span class="group-collapse-btn" @click="toggleGroupCollapse(topic.id)">
+                        {{ isGroupCollapsed(topic.id) ? '▶' : '▼' }}
+                      </span>
                     </td>
                     <td class="col-title">
                       <input type="text" v-model="topic.title" style="font-weight:600" />
@@ -534,95 +545,88 @@ window.StudyApp = {
                     <td class="col-diff">
                       <select class="select-sm" @change="groupBulkDifficulty(topic.id, $event.target.value)">
                         <option value="">Set all…</option>
-                        <option value="easy">All Easy</option>
-                        <option value="medium">All Medium</option>
-                        <option value="hard">All Hard</option>
+                        <option value="easy">All Low</option>
+                        <option value="medium">All Standard</option>
+                        <option value="hard">All High</option>
                       </select>
                     </td>
                     <td class="col-state">
-                      <select class="select-sm" @change="groupBulkState(topic.id, $event.target.value)">
-                        <option value="">Set all…</option>
-                        <option value="Not Started">All Not Started</option>
-                        <option value="Learned">All Learned</option>
-                        <option value="Practicing">All Practicing</option>
-                        <option value="Reviewing">All Reviewing</option>
-                      </select>
+                      <label class="phase-check"><input type="checkbox" :checked="groupLearnState(topic.id) === 'all'" :indeterminate.prop="groupLearnState(topic.id) === 'mixed'" @change="setGroupLearn(topic.id, $event.target.checked)" /> Learning</label>
+                      <label class="phase-check"><input type="checkbox" :checked="groupPracticeState(topic.id) === 'all'" :indeterminate.prop="groupPracticeState(topic.id) === 'mixed'" @change="setGroupPractice(topic.id, $event.target.checked)" /> Practicing</label>
+                      <label class="phase-check"><input type="checkbox" :checked="groupReviseState(topic.id) === 'all'" :indeterminate.prop="groupReviseState(topic.id) === 'mixed'" @change="setGroupRevise(topic.id, $event.target.checked)" /> Revising</label>
                     </td>
                     <td class="col-actions">
                       <button class="btn btn-ghost btn-icon" title="Move group up"   @click="moveGroup(topic.id, -1)">↑</button>
                       <button class="btn btn-ghost btn-icon" title="Move group down" @click="moveGroup(topic.id,  1)">↓</button>
-                      <button class="btn btn-ghost btn-icon" title="Add sub-topic" @click="addSubTopic(topic.id)">+</button>
-                      <button class="btn btn-ghost btn-icon" title="Delete group and all its sub-topics" @click="deleteGroup(topic.id)">🗑</button>
+                      <button v-if="!isRestrictedMode" class="btn btn-ghost btn-icon" title="Add sub-topic" @click="addSubTopic(topic.id)">+</button>
                     </td>
                   </tr>
 
                   <!-- Sub-topic row (hidden when group is collapsed) -->
                   <tr v-else-if="topic.parentId && !isGroupCollapsed(topic.parentId)"
-                      class="topic-subtopic-row"
                       draggable="true"
-                      :class="{ 'drag-over': dragOverIdx === idx, 'dragging': dragSrcIdx === idx }"
+                      :class="{ 'topic-subtopic-row': true, 'topic-row--disabled': topic.enabled === false, 'drag-over': dragOverIdx === idx, 'dragging': dragSrcIdx === idx }"
                       @dragstart="onDragStart($event, idx)"
                       @dragover.prevent="onDragOver($event, idx)"
                       @drop.prevent="onDrop($event, idx)"
                       @dragend="onDragEnd">
-                    <td class="col-num" style="color:var(--c-muted);padding-left:20px">↳</td>
+                    <td class="col-check" style="padding-left:20px">
+                      <input type="checkbox"
+                             :checked="topic.enabled !== false"
+                             @change="topic.enabled = $event.target.checked" />
+                    </td>
                     <td class="col-title">
                       <input type="text" v-model="topic.title" style="padding-left:4px" />
                     </td>
                     <td class="col-diff">
                       <select class="select-sm" v-model="topic.difficulty">
-                        <option value="easy">Easy</option>
-                        <option value="medium">Medium</option>
-                        <option value="hard">Hard</option>
+                        <option value="easy">Low</option>
+                        <option value="medium">Standard</option>
+                        <option value="hard">High</option>
                       </select>
                     </td>
                     <td class="col-state">
-                      <select class="select-sm" v-model="topic.startingState">
-                        <option value="Not Started">Not Started</option>
-                        <option value="Learned">Learned</option>
-                        <option value="Practicing">Practicing</option>
-                        <option value="Reviewing">Reviewing</option>
-                      </select>
+                      <label class="phase-check"><input type="checkbox" :checked="topic.doLearn !== false"    @change="topic.doLearn    = $event.target.checked" /> Learning</label>
+                      <label class="phase-check"><input type="checkbox" :checked="topic.doPractice !== false" @change="topic.doPractice = $event.target.checked" /> Practicing</label>
+                      <label class="phase-check"><input type="checkbox" :checked="topic.doRevise !== false"   @change="topic.doRevise   = $event.target.checked" /> Revising</label>
                     </td>
                     <td class="col-actions">
                       <button class="btn btn-ghost btn-icon" title="Move up"   @click="moveSubTopic(topic.id, -1)">↑</button>
                       <button class="btn btn-ghost btn-icon" title="Move down" @click="moveSubTopic(topic.id,  1)">↓</button>
-                      <button class="btn btn-ghost btn-icon" title="Delete"    @click="deleteTopic(idx)">🗑</button>
                     </td>
                   </tr>
 
                   <!-- Standalone topic row -->
                   <tr v-else-if="!topic.isGroup && !topic.parentId"
-                      class="topic-row"
                       draggable="true"
-                      :class="{ 'drag-over': dragOverIdx === idx, 'dragging': dragSrcIdx === idx }"
+                      :class="{ 'topic-row': true, 'topic-row--disabled': topic.enabled === false, 'drag-over': dragOverIdx === idx, 'dragging': dragSrcIdx === idx }"
                       @dragstart="onDragStart($event, idx)"
                       @dragover.prevent="onDragOver($event, idx)"
                       @drop.prevent="onDrop($event, idx)"
                       @dragend="onDragEnd">
-                    <td class="col-num">{{ idx + 1 }}</td>
+                    <td class="col-check">
+                      <input type="checkbox"
+                             :checked="topic.enabled !== false"
+                             @change="topic.enabled = $event.target.checked" />
+                    </td>
                     <td class="col-title">
                       <input type="text" v-model="topic.title" />
                     </td>
                     <td class="col-diff">
                       <select class="select-sm" v-model="topic.difficulty">
-                        <option value="easy">Easy</option>
-                        <option value="medium">Medium</option>
-                        <option value="hard">Hard</option>
+                        <option value="easy">Low</option>
+                        <option value="medium">Standard</option>
+                        <option value="hard">High</option>
                       </select>
                     </td>
                     <td class="col-state">
-                      <select class="select-sm" v-model="topic.startingState">
-                        <option value="Not Started">Not Started</option>
-                        <option value="Learned">Learned</option>
-                        <option value="Practicing">Practicing</option>
-                        <option value="Reviewing">Reviewing</option>
-                      </select>
+                      <label class="phase-check"><input type="checkbox" :checked="topic.doLearn !== false"    @change="topic.doLearn    = $event.target.checked" /> Learning</label>
+                      <label class="phase-check"><input type="checkbox" :checked="topic.doPractice !== false" @change="topic.doPractice = $event.target.checked" /> Practicing</label>
+                      <label class="phase-check"><input type="checkbox" :checked="topic.doRevise !== false"   @change="topic.doRevise   = $event.target.checked" /> Revising</label>
                     </td>
                     <td class="col-actions">
                       <button class="btn btn-ghost btn-icon" title="Move up"    @click="moveTopic(idx, -1)" :disabled="idx === 0">↑</button>
                       <button class="btn btn-ghost btn-icon" title="Move down"  @click="moveTopic(idx,  1)" :disabled="idx === topics.length - 1">↓</button>
-                      <button class="btn btn-ghost btn-icon" title="Delete"     @click="deleteTopic(idx)">🗑</button>
                     </td>
                   </tr>
 
@@ -631,18 +635,17 @@ window.StudyApp = {
             </table>
           </div>
 
-          <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <div v-if="!isRestrictedMode" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-secondary btn-sm" @click="addTopic()">+ Add Standalone Topic</button>
             <button class="btn btn-secondary btn-sm" @click="addGroup()">+ Add Group</button>
           </div>
 
           <!-- Bottom action bar -->
           <div class="action-bar">
-            <button class="btn btn-secondary" @click="goBack()">← Back</button>
-            <button v-if="planResult" class="btn btn-secondary" @click="navigate('step4')">Return to Plan</button>
+            <button class="btn btn-secondary" style="margin-right:auto" @click="goBack()">← Back</button>
             <button class="btn btn-primary btn-lg" @click="navigate('step3')"
-                    :disabled="topics.length === 0">
-              Confirm Topics →
+                    :disabled="topics.filter(t => !t.isGroup && t.enabled !== false).length === 0">
+              Continue →
             </button>
           </div>
         </div>
@@ -652,38 +655,42 @@ window.StudyApp = {
     <!-- ════════════════ STEP 3 — Schedule & Settings ════════════════ -->
     <template v-else-if="!loading && screen === 'step3'">
       <div class="stepper">
-        <div class="step done"><div class="step-num">✓</div><span class="step-label">Topic Input</span></div>
+        <div class="step done"><div class="step-num">✓</div><span class="step-label">Exam Setup</span></div>
         <div class="step-connector"></div>
-        <div class="step done"><div class="step-num">✓</div><span class="step-label">Review Topics</span></div>
+        <div class="step done"><div class="step-num">✓</div><span class="step-label">Topics Setup</span></div>
         <div class="step-connector"></div>
-        <div class="step active"><div class="step-num">3</div><span class="step-label">Schedule</span></div>
+        <div class="step active"><div class="step-num">3</div><span class="step-label">Study Schedule</span></div>
         <div class="step-connector"></div>
         <div class="step"><div class="step-num">4</div><span class="step-label">Your Plan</span></div>
       </div>
 
       <div class="card">
         <div class="card-body">
-          <div class="section-title">Schedule & Settings</div>
-          <div class="section-sub">Define your study dates and how many units per day.</div>
-
-          <!-- Recommended study hours banner -->
-          <div v-if="recommendedStudyHours" class="alert alert-info" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px">
-            <div>
-              <strong>Recommended study hours for this exam:</strong> {{ recommendedStudyHours }} hours.
-              <template v-if="!startDate || !examDate">
-                Set your study dates above to see the suggested daily pace.
-              </template>
-              <template v-else-if="recommendedDailyMins > 0 && recommendedDailyMins <= 720">
-                Across {{ recommendedAvailableDays }} available days: <strong>{{ fmtMins(recommendedDailyMins) }}/day</strong>.
-              </template>
-              <template v-else-if="recommendedDailyMins > 720">
-                Only {{ recommendedAvailableDays }} days available — this would require over 12 h/day.
-              </template>
+          <div class="section-title">Study Schedule</div>
+          <hr>
+          <!-- Plan Summary Bar (step 3) -->
+          <div v-if="calculatedStudyHours !== null || topics.filter(t => !t.isGroup).length > 0" class="plan-stats-bar" style="margin-bottom:8px">
+            <div class="plan-stat plan-stat--highlight"
+                 :class="planFits === true ? 'plan-stat--green' : planFits === false ? 'plan-stat--red' : ''">
+              <span class="plan-stat-value">~{{ allocatedStudyHours ?? 0 }}h / ~{{ calculatedStudyHours ?? 0 }}h</span>
+              <span class="plan-stat-label">study time allocated</span>
             </div>
-            <button class="btn btn-primary btn-sm"
-                    v-if="startDate && examDate && recommendedDailyMins > 0 && recommendedDailyMins <= 720"
-                    @click="applyRecommendedHours()">Apply recommendation</button>
+            <div class="plan-stat" v-if="recommendedAvailableDays > 0">
+              <span class="plan-stat-value">{{ recommendedAvailableDays }}</span>
+              <span class="plan-stat-label">study days</span>
+            </div>
+            <div class="plan-stat">
+              <span class="plan-stat-value">{{ topics.filter(t => !t.isGroup && t.enabled !== false).length }}</span>
+              <span class="plan-stat-label">topics</span>
+            </div>
+            <div class="plan-stat" v-if="numMocks > 0">
+              <span class="plan-stat-value">{{ numMocks }}</span>
+              <span class="plan-stat-label">mock exams</span>
+            </div>
           </div>
+          <p v-if="planPreviewStatusText" class="plan-status-text"
+             :class="planFits === false ? 'plan-status-text--red' : 'plan-status-text--green'"
+             style="margin-bottom:16px">{{ planPreviewStatusText }}</p>
 
           <!-- Break days -->
           <div class="form-group">
@@ -706,7 +713,7 @@ window.StudyApp = {
 
           <div class="form-group">
             <label>Study schedule</label>
-            <div class="form-hint" style="margin-bottom:10px">Set your base weekly pace. Each ± step = 20 minutes. Unit length defaults to 20 min and can be adjusted in the overflow panel after generating the plan.</div>
+            <div class="form-hint" style="margin-bottom:10px">Set your base weekly pace. Each ± step = 20 minutes.</div>
             <div class="schedule-layout">
 
               <!-- Left: First week table -->
@@ -748,12 +755,6 @@ window.StudyApp = {
                 </div>
                 <div class="sched-total">
                   Week 1 total: <strong>{{ fmtMins(firstWeekTotalMins) }}</strong>
-                </div>
-                <div style="margin-top:8px;font-size:.82rem;color:var(--c-muted)">
-                  Unit length: <strong>{{ unitLength }} min</strong>
-                  <span v-if="computedSessionLengthPreview && computedSessionLengthPreview.insufficient" style="color:var(--c-error);margin-left:6px">
-                    ⚠ Not enough time — overflow likely even at minimum unit length.
-                  </span>
                 </div>
               </div>
 
@@ -814,9 +815,10 @@ window.StudyApp = {
           </div>
 
           <div class="action-bar">
-            <button class="btn btn-secondary" @click="goBack()">Back</button>
+            <button class="btn btn-secondary" style="margin-right:auto" @click="goBack()">← Back</button>
             <button class="btn btn-primary btn-lg" @click="doGeneratePlan()"
-                    :disabled="!examDate || !startDate">
+                    :disabled="!examDate || !startDate"
+                    :style="planFits === false ? 'background:var(--c-danger);border-color:var(--c-danger)' : planFits === true ? 'background:#16a34a;border-color:#16a34a' : ''">
               Generate Plan →
             </button>
           </div>
@@ -828,11 +830,11 @@ window.StudyApp = {
     <template v-else-if="!loading && screen === 'step4' && planResult">
 
       <div class="stepper">
-        <div class="step done"><div class="step-num">✓</div><span class="step-label">Topic Input</span></div>
+        <div class="step done"><div class="step-num">✓</div><span class="step-label">Exam Setup</span></div>
         <div class="step-connector"></div>
-        <div class="step done"><div class="step-num">✓</div><span class="step-label">Review Topics</span></div>
+        <div class="step done"><div class="step-num">✓</div><span class="step-label">Topics Setup</span></div>
         <div class="step-connector"></div>
-        <div class="step done"><div class="step-num">✓</div><span class="step-label">Schedule</span></div>
+        <div class="step done"><div class="step-num">✓</div><span class="step-label">Study Schedule</span></div>
         <div class="step-connector"></div>
         <div class="step active"><div class="step-num">4</div><span class="step-label">Your Plan</span></div>
       </div>
@@ -899,213 +901,69 @@ window.StudyApp = {
         <button class="btn btn-ghost btn-sm" style="margin-left:auto;flex-shrink:0" @click="manualMarkReminderVisible = false">Dismiss</button>
       </div>
 
-      <!-- Overflow / tweak panel — always expandable; auto-opens when overflow -->
-      <div class="overflow-panel" :class="{ ok: !planResult.overflow.hasOverflow }">
-        <div class="overflow-header" @click="overflowExpanded = !overflowExpanded">
-          <h3>
-            <span v-if="planResult.overflow.incompleteLearnTopics.length > 0 || planResult.overflow.incompleteMCQTopics.length > 0">⚠ Schedule Overflow — action required</span>
-            <span v-else-if="(planResult.overflow.mockShortfall || 0) > 0">⚠ Mock exams could not all be scheduled — action required</span>
-            <span v-else>✓ Plan fits — expand to tweak schedule</span>
-          </h3>
-          <span>{{ overflowExpanded ? '▲ collapse' : '▼ expand' }}</span>
-        </div>
-
-        <div class="overflow-body" v-if="overflowExpanded">
-          <!-- Overflow message (only when there is one) -->
-          <div class="overflow-summary" v-if="planResult.overflow.hasOverflow">
-            {{ overflowSummaryText }}
-          </div>
-
-          <!-- Quick-fix buttons for actionable overflow -->
-          <div v-if="planResult.overflow.hasOverflow"
-               style="margin-bottom:20px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;display:flex;flex-direction:column;gap:12px">
-            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-              <button class="btn btn-secondary btn-sm" style="min-width:240px" @click="doAdjustSchedule()">⚡ Increase daily study time for me</button>
-              <span style="font-size:.82rem;color:var(--c-muted)">Scales up your daily minutes to fit everything</span>
-            </div>
-          </div>
-
-          <p style="font-weight:600;margin-bottom:12px">Adjust plan:</p>
-
-          <!-- Option 1: Update study schedule (full layout matching step 3) -->
-          <div style="margin-bottom:16px">
-            <button class="btn btn-secondary btn-sm" style="min-width:220px;text-align:left" @click="overflowEditSchedule = !overflowEditSchedule">
-              {{ overflowEditSchedule ? '▲ Hide schedule' : '1. Update study schedule' }}
-            </button>
-            <div v-if="overflowEditSchedule" style="margin-top:12px">
-              <div class="schedule-layout">
-                <!-- Left: week table -->
-                <div class="schedule-left">
-                  <div class="sched-week-title">Week 1 — base pace</div>
-                  <div class="sched-table">
-                    <div class="sched-row sched-header-row">
-                      <span class="sched-day-col">Day</span>
-                      <span class="sched-ctrl-col">Daily study</span>
-                      <span class="sched-hint-col"></span>
-                    </div>
-                    <div v-for="dow in dowLabels" :key="dow.key" class="sched-row">
-                      <span class="sched-day-col">{{ dow.label.slice(0,3) }}</span>
-                      <div class="sched-ctrl-col">
-                        <div class="sg-time-ctrl">
-                          <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 20)" :disabled="firstWeek[dow.key] === 0">−</button>
-                          <span class="sg-time-val">{{ fmtMins(firstWeek[dow.key]) }}</span>
-                          <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(720, firstWeek[dow.key] + 20)">+</button>
-                        </div>
-                      </div>
-                      <span class="sched-hint-col sg-sessions-hint">{{ firstWeek[dow.key] > 0 ? fmtMins(firstWeek[dow.key]) : 'off' }}</span>
-                    </div>
-                    <div class="sched-row sched-apply-row">
-                      <span class="sched-day-col" style="font-size:.78rem;color:var(--c-muted)">All</span>
-                      <div class="sched-ctrl-col">
-                        <div class="sg-time-ctrl">
-                          <button class="sg-step-btn" @click="adjustAllDays(-20)">−</button>
-                          <span class="sg-time-val" style="font-size:.75rem;color:var(--c-muted)">apply to all</span>
-                          <button class="sg-step-btn" @click="adjustAllDays(20)">+</button>
-                        </div>
-                      </div>
-                      <span class="sched-hint-col"></span>
-                    </div>
-                  </div>
-                  <div class="sched-total">Week 1 total: <strong>{{ fmtMins(firstWeekTotalMins) }}</strong></div>
-                </div>
-                <!-- Right: chart + ramp controls -->
-                <div class="schedule-right">
-                  <!-- Spacer to align chart top with table rows (matches sched-week-title height) -->
-                  <div class="sched-week-title" style="visibility:hidden" aria-hidden="true">Week 1</div>
-                  <div class="sched-chart-wrap" @mousemove="onScheduleChartMouseMove" @mouseleave="scheduleTooltip.visible = false">
-                    <canvas ref="scheduleCanvas" class="sched-chart-canvas"></canvas>
-                    <div v-if="scheduleTooltip.visible" class="sched-tooltip"
-                         :style="{ left: scheduleTooltip.x + 'px', top: scheduleTooltip.y + 'px' }">
-                      {{ scheduleTooltip.text }}
-                    </div>
-                  </div>
-                  <div class="sched-chart-meta" v-if="schedulePreviewData.length">
-                    Total plan: ~<strong>{{ totalScheduleHours }}h</strong>
-                    <span style="color:var(--c-muted);font-size:.78rem"> across {{ schedulePreviewData.length }} week{{ schedulePreviewData.length !== 1 ? 's' : '' }}</span>
-                  </div>
-                  <div class="sched-ramp-row">
-                    <label class="sched-radio-opt">
-                      <input type="radio" value="linear" v-model="rampMode" />
-                      <span>Linear increase</span>
-                    </label>
-                    <label class="sched-radio-opt">
-                      <input type="radio" value="cram" v-model="rampMode" />
-                      <span>Cram at the end</span>
-                    </label>
-                  </div>
-                  <div class="sched-intensity-row">
-                    <span class="sched-intensity-label">Peak intensity</span>
-                    <div class="sg-time-ctrl">
-                      <button class="sg-step-btn" @click="adjustIntensity(-0.25)" :disabled="intensityMultiplier <= 1">−</button>
-                      <span class="sg-time-val" style="min-width:44px">×{{ intensityMultiplier.toFixed(2) }}</span>
-                      <button class="sg-step-btn" @click="adjustIntensity(0.25)">+</button>
-                    </div>
-                    <span class="sched-intensity-hint">~{{ fmtMins(lastWeekTotalMins) }}/week at exam</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Option 2: Update exam date -->
-          <div style="margin-bottom:16px">
-            <button class="btn btn-secondary btn-sm" style="min-width:220px;text-align:left" @click="overflowEditDate = !overflowEditDate">
-              {{ overflowEditDate ? '▲ Hide date' : '2. Update exam date' }}
-            </button>
-            <div v-if="overflowEditDate" style="margin-top:8px;display:flex;align-items:center;gap:12px">
-              <div class="form-group" style="margin-bottom:0">
-                <label style="font-size:.82rem">New exam date</label>
-                <input type="date" v-model="examDate" style="width:160px" />
-              </div>
-            </div>
-          </div>
-
-          <!-- Option 3: Update topics -->
-          <div style="margin-bottom:16px">
-            <button class="btn btn-secondary btn-sm" style="min-width:220px;text-align:left" @click="navigate('step2')">
-              3. Update topics table
-            </button>
-          </div>
-
-          <!-- Option 4: Adjust mocks (number + dates grouped) -->
-          <div style="margin-bottom:16px">
-            <button class="btn btn-secondary btn-sm" style="min-width:220px;text-align:left" @click="overflowEditMocks = !overflowEditMocks">
-              {{ overflowEditMocks ? '▲ Hide mocks' : '4. Adjust mocks' }}
-            </button>
-            <div v-if="overflowEditMocks" style="margin-top:10px;display:flex;flex-direction:column;gap:14px">
-              <div style="display:flex;align-items:center;gap:10px">
-                <span style="font-size:.88rem;font-weight:500;min-width:140px">Number of mocks:</span>
-                <div class="spinner-group">
-                  <button @click="numMocks = Math.max(0, numMocks - 1)">−</button>
-                  <input type="number" min="0" max="10" v-model.number="numMocks" style="width:48px" />
-                  <button @click="numMocks = Math.min(10, numMocks + 1)">+</button>
-                </div>
-              </div>
-              <div v-if="scheduledMocks.length > 0">
-                <div v-for="m in scheduledMocks" :key="m.mockNumber"
-                     style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
-                  <label style="font-size:.84rem;min-width:80px;font-weight:500">Mock {{ m.mockNumber }}</label>
-                  <input type="date" style="width:160px"
-                         :value="mockDateOverrides[m.mockNumber] || m.dateStr"
-                         @change="mockDateOverrides = { ...mockDateOverrides, [m.mockNumber]: $event.target.value }" />
-                  <span style="font-size:.78rem;color:var(--c-muted)" v-if="!mockDateOverrides[m.mockNumber]">scheduled</span>
-                  <span style="font-size:.78rem;color:#2563eb" v-else>changed</span>
-                </div>
-                <button class="btn btn-primary btn-sm" style="margin-top:4px"
-                        @click="applyMockDateOverrides()">
-                  ✓ Apply &amp; recalculate
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="action-bar" style="padding-top:12px;margin-top:8px">
-            <button class="btn btn-primary" @click="doGeneratePlan()">↺ Regenerate Plan</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Download / save row -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        <button class="btn btn-secondary btn-sm" @click="doExportDailyCsv()">⬇ Day-by-day CSV</button>
-        <button class="btn btn-secondary btn-sm" @click="doExportTopicsCsv()">⬇ Topics CSV</button>
-        <button class="btn btn-secondary btn-sm" @click="doExportJson()">⬇ Save plan (JSON)</button>
+      <!-- Plan page header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span class="section-title" style="margin:0">Your Study Plan</span>
+        <button class="btn btn-secondary btn-sm" style="background:#111;border-color:#111;color:#fff" @click="navigate('settings')">⚙ Edit Study Plan</button>
       </div>
 
       <!-- Plan stats bar -->
-      <div v-if="planTotalHours !== null" class="plan-stats-bar">
-        <div class="plan-stat plan-stat--highlight">
-          <span class="plan-stat-value">~{{ planTotalHours }} h</span>
-          <span class="plan-stat-label">total study time</span>
+      <template v-if="planTotalHours !== null">
+        <!-- Condition 1: not yet tracking -->
+        <div v-if="!trackingMode" class="plan-stats-bar" style="margin-bottom:8px">
+          <div class="plan-stat plan-stat--highlight"
+               :class="planResult.overflow.hasOverflow ? 'plan-stat--red' : 'plan-stat--green'">
+            <span class="plan-stat-value">~{{ planTotalHours }}h / ~{{ calculatedStudyHours ?? planTotalHours }}h</span>
+            <span class="plan-stat-label">study time in plan</span>
+          </div>
+          <div class="plan-stat">
+            <span class="plan-stat-value">{{ studyDaysWithSessions.length }}</span>
+            <span class="plan-stat-label">study days</span>
+          </div>
+          <div class="plan-stat">
+            <span class="plan-stat-value">{{ planResult.topics.length }}</span>
+            <span class="plan-stat-label">topics</span>
+          </div>
+          <div class="plan-stat" v-if="planResult.mocks.filter(m => m.type === 'mock').length > 0">
+            <span class="plan-stat-value">{{ planResult.mocks.filter(m => m.type === 'mock').length }}</span>
+            <span class="plan-stat-label">mock exams</span>
+          </div>
         </div>
-        <div class="plan-stat">
-          <span class="plan-stat-value">{{ studyDaysWithSessions.length }}</span>
-          <span class="plan-stat-label">study days</span>
+        <p v-if="planResultStatusText" class="plan-status-text"
+           :class="planResult.overflow.hasOverflow ? 'plan-status-text--red' : 'plan-status-text--green'"
+           style="margin-bottom:12px">{{ planResultStatusText }}</p>
+        <!-- Condition 2: tracking mode -->
+        <div v-else class="plan-stats-bar">
+          <div class="plan-stat plan-stat--highlight"
+               :class="(planFutureHours || 0) >= (studyTimeLeftHours || 0) ? 'plan-stat--green' : 'plan-stat--red'">
+            <span class="plan-stat-value">~{{ planFutureHours }}h / ~{{ studyTimeLeftHours }}h</span>
+            <span class="plan-stat-label">study time left</span>
+          </div>
+          <div class="plan-stat">
+            <span class="plan-stat-value">{{ daysLeft }}</span>
+            <span class="plan-stat-label">days left</span>
+          </div>
+          <div class="plan-stat">
+            <span class="plan-stat-value">{{ topicsLeft }}</span>
+            <span class="plan-stat-label">topics left</span>
+          </div>
+          <div class="plan-stat" v-if="planResult.mocks.filter(m => m.type === 'mock').length > 0">
+            <span class="plan-stat-value">{{ mocksLeft }}</span>
+            <span class="plan-stat-label">mock exams left</span>
+          </div>
         </div>
-        <div class="plan-stat">
-          <span class="plan-stat-value">{{ planResult.topics.length }}</span>
-          <span class="plan-stat-label">topics</span>
-        </div>
-        <div class="plan-stat">
-          <span class="plan-stat-value">{{ planResult.sessionLength }} min</span>
-          <span class="plan-stat-label">study unit duration</span>
-        </div>
-        <div class="plan-stat" v-if="planResult.mocks.filter(m => m.type === 'mock').length > 0">
-          <span class="plan-stat-value">{{ planResult.mocks.filter(m => m.type === 'mock').length }}</span>
-          <span class="plan-stat-label">mock exams</span>
-        </div>
-      </div>
+      </template>
 
       <!-- Tabs -->
       <div class="tab-bar">
         <button class="tab-btn" :class="{ active: activeTab === 'calendar' }"   @click="setTab('calendar')">Calendar</button>
         <button class="tab-btn" :class="{ active: activeTab === 'daily' }"      @click="setTab('daily')">Day-by-Day</button>
         <button class="tab-btn" :class="{ active: activeTab === 'topics' }"     @click="setTab('topics')">Topic Summary</button>
-        <button class="tab-btn" :class="{ active: activeTab === 'trajectory' }" @click="setTab('trajectory')">Visual Trajectory</button>
+        <button v-if="debugMode" class="tab-btn" :class="{ active: activeTab === 'trajectory' }" @click="setTab('trajectory')">Visual Trajectory</button>
       </div>
 
-      <!-- ── Tab: Visual Trajectory ── -->
-      <div v-if="activeTab === 'trajectory'">
+      <!-- ── Tab: Visual Trajectory (debug only) ── -->
+      <div v-if="debugMode && activeTab === 'trajectory'">
         <!-- Collapsed/expanded toggle (only shown when there are groups) -->
         <div v-if="hasGroups" style="margin-bottom:10px;display:flex;align-items:center;gap:10px">
           <button class="btn btn-secondary btn-sm" @click="toggleChartCollapsed()">
@@ -1184,31 +1042,42 @@ window.StudyApp = {
               </button>
             </div>
             <template v-if="isDayExpanded(item.dateKey)">
-              <template v-for="(block, bi) in mergeSessions(item.sessions)" :key="bi">
-                <div class="session-row"
+              <!-- Ordered activity bar -->
+              <div class="day-act-bar" v-if="item.sessions.length">
+                <div v-for="(seg, si) in dayActivityBar(item.sessions)" :key="si"
+                     class="day-act-seg"
+                     :style="{ background: seg.color, flex: seg.pct }"
+                     :title="seg.label">{{ si + 1 }}</div>
+              </div>
+              <!-- Session rows — grid layout for column alignment -->
+              <div class="sessions-grid">
+                <div v-for="(block, bi) in mergeSessions(item.sessions)" :key="bi"
+                     class="session-row"
                      :class="{
                        'session-row--done': trackingMode && isSessionDone(item.dateKey, block),
                        'session-row--skip': trackingMode && isSessionSkipped(item.dateKey, block),
                      }">
+                  <span class="session-num">{{ bi + 1 }}</span>
                   <span class="activity-pill" :class="pillClass(block.activityType)">{{ activityLabel(block.activityType) }}</span>
                   <span class="session-topic">{{ block.topicTitle || (block.activityType === 'mock' ? 'Mock Exam' : 'Post-Mock Revision') }}</span>
-                  <span class="session-count-badge" v-if="block.count > 1">× {{ block.count }}</span>
                   <span class="session-reason">{{ block.reason }}</span>
-                  <template v-if="trackingMode && item.dateKey <= todayKey">
-                    <template v-if="lockedDays[item.dateKey]">
-                      <span class="track-locked-badge">🔒</span>
+                  <span class="session-track">
+                    <template v-if="trackingMode && item.dateKey <= todayKey">
+                      <template v-if="lockedDays[item.dateKey]">
+                        <span class="track-locked-badge">🔒</span>
+                      </template>
+                      <template v-else>
+                        <button class="btn btn-xs track-btn"
+                                :class="isSessionDone(item.dateKey, block) ? 'track-btn--done' : ''"
+                                @click.stop="setSessionStatus(item.dateKey, block, 'done')">✓</button>
+                        <button class="btn btn-xs track-btn"
+                                :class="isSessionSkipped(item.dateKey, block) ? 'track-btn--skip' : ''"
+                                @click.stop="setSessionStatus(item.dateKey, block, 'skip')">✕</button>
+                      </template>
                     </template>
-                    <template v-else>
-                      <button class="btn btn-xs track-btn"
-                              :class="isSessionDone(item.dateKey, block) ? 'track-btn--done' : ''"
-                              @click.stop="setSessionStatus(item.dateKey, block, 'done')">✓</button>
-                      <button class="btn btn-xs track-btn"
-                              :class="isSessionSkipped(item.dateKey, block) ? 'track-btn--skip' : ''"
-                              @click.stop="setSessionStatus(item.dateKey, block, 'skip')">✕</button>
-                    </template>
-                  </template>
+                  </span>
                 </div>
-              </template>
+              </div>
             </template>
           </div>
         </template>
@@ -1359,42 +1228,47 @@ window.StudyApp = {
                     @click="toggleBlockedDay(calendarPopover.dateKey)">
               {{ isBlockedDay(calendarPopover.dateKey) ? '✓ Unblock day' : '✕ Skip day' }}
             </button>
-            <!-- Collapse / expand toggle — always present -->
-            <button class="btn btn-ghost btn-sm cal-detail-collapse-btn"
-                    :style="trackingMode && calendarPopover.dateKey > todayKey ? '' : 'margin-left:auto'"
-                    :title="dayDetailCollapsed ? 'Expand' : 'Collapse'"
-                    @click="dayDetailCollapsed = !dayDetailCollapsed">
-              {{ dayDetailCollapsed ? '▼' : '▲' }}
-            </button>
           </div>
-          <div v-show="!dayDetailCollapsed">
+          <div>
             <div v-if="isBlockedDay(calendarPopover.dateKey)" class="cal-detail-blocked">
               This day is marked as a skip day. Apply & Update to reschedule its sessions.
             </div>
             <div class="cal-detail-body" v-if="calendarPopover.sessions.length">
-              <div v-for="(block, bi) in mergeSessions(calendarPopover.sessions)" :key="bi"
-                   class="cal-detail-row"
-                   :class="{
-                     'cal-detail-row--done': isSessionDone(calendarPopover.dateKey, block),
-                     'cal-detail-row--skip': isSessionSkipped(calendarPopover.dateKey, block),
-                   }">
-                <span class="activity-pill" :class="pillClass(block.activityType)">{{ activityLabel(block.activityType) }}</span>
-                <span class="cal-detail-topic">{{ block.topicTitle || (block.activityType === 'mock' ? 'Mock Exam' : 'Post-Mock Revision') }}</span>
-                <span class="session-count-badge" v-if="block.count > 1">× {{ block.count }}</span>
-                <span class="session-reason">{{ block.reason }}</span>
-                <template v-if="trackingMode && calendarPopover.dateKey <= todayKey">
-                  <template v-if="lockedDays[calendarPopover.dateKey]">
-                    <span class="track-locked-badge">🔒</span>
-                  </template>
-                  <template v-else>
-                    <button class="btn btn-xs track-btn"
-                            :class="isSessionDone(calendarPopover.dateKey, block) ? 'track-btn--done' : ''"
-                            @click="setSessionStatus(calendarPopover.dateKey, block, 'done')">✓ Done</button>
-                    <button class="btn btn-xs track-btn"
-                            :class="isSessionSkipped(calendarPopover.dateKey, block) ? 'track-btn--skip' : ''"
-                            @click="setSessionStatus(calendarPopover.dateKey, block, 'skip')">✕ Skip</button>
-                  </template>
-                </template>
+              <!-- Ordered activity bar -->
+              <div class="day-act-bar" style="margin-bottom:8px">
+                <div v-for="(seg, si) in dayActivityBar(calendarPopover.sessions)" :key="si"
+                     class="day-act-seg"
+                     :style="{ background: seg.color, flex: seg.pct }"
+                     :title="seg.label">{{ si + 1 }}</div>
+              </div>
+              <!-- Session rows — grid layout for column alignment -->
+              <div class="sessions-grid">
+                <div v-for="(block, bi) in mergeSessions(calendarPopover.sessions)" :key="bi"
+                     class="session-row"
+                     :class="{
+                       'session-row--done': isSessionDone(calendarPopover.dateKey, block),
+                       'session-row--skip': isSessionSkipped(calendarPopover.dateKey, block),
+                     }">
+                  <span class="session-num">{{ bi + 1 }}</span>
+                  <span class="activity-pill" :class="pillClass(block.activityType)">{{ activityLabel(block.activityType) }}</span>
+                  <span class="session-topic">{{ block.topicTitle || (block.activityType === 'mock' ? 'Mock Exam' : 'Post-Mock Revision') }}</span>
+                  <span class="session-reason">{{ block.reason }}</span>
+                  <span class="session-track">
+                    <template v-if="trackingMode && calendarPopover.dateKey <= todayKey">
+                      <template v-if="lockedDays[calendarPopover.dateKey]">
+                        <span class="track-locked-badge">🔒</span>
+                      </template>
+                      <template v-else>
+                        <button class="btn btn-xs track-btn"
+                                :class="isSessionDone(calendarPopover.dateKey, block) ? 'track-btn--done' : ''"
+                                @click="setSessionStatus(calendarPopover.dateKey, block, 'done')">✓ Done</button>
+                        <button class="btn btn-xs track-btn"
+                                :class="isSessionSkipped(calendarPopover.dateKey, block) ? 'track-btn--skip' : ''"
+                                @click="setSessionStatus(calendarPopover.dateKey, block, 'skip')">✕ Skip</button>
+                      </template>
+                    </template>
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1496,29 +1370,13 @@ window.StudyApp = {
           </div>
         </template>
 
-        <!-- Legend -->
-        <div class="cal-legend">
-          <span v-for="item in calDotLegend" :key="item.label" class="cal-legend-item">
-            <span class="cal-dot" :style="{ background: item.color }"></span>
-            {{ item.label }}
-          </span>
-          <span class="cal-legend-item">
-            <span class="cal-cell--today cal-legend-swatch"></span> Today
-          </span>
-          <span class="cal-legend-item">
-            <span class="cal-cell--exam cal-legend-swatch"></span> Exam date
-          </span>
-          <span v-if="breakDays.length" class="cal-legend-item">
-            <span class="cal-cell--break cal-legend-swatch"></span> Break day
-          </span>
-        </div>
 
 
       </div>
 
       <!-- Post-generation prompt -->
       <div class="alert alert-info" style="margin-top:24px">
-        Happy with this plan? Save it using the buttons above, or adjust using the overflow panel.
+        Happy with this plan? Save it using the buttons above, or use ⚙ Edit Study Plan to adjust topics, schedule, or exam date.
       </div>
     </template>
 
@@ -1532,7 +1390,7 @@ window.StudyApp = {
           <div class="row">
             <div class="col">
               <div class="form-group">
-                <label>Study start date</label>
+                <label>When would you start studying?</label>
                 <input type="date" v-model="startDate" />
               </div>
             </div>
@@ -1617,7 +1475,7 @@ window.StudyApp = {
           </div>
 
           <div class="action-bar">
-            <button class="btn btn-secondary" @click="goBack()">Back</button>
+            <button class="btn btn-secondary" style="margin-right:auto" @click="goBack()">← Back</button>
             <button class="btn btn-secondary" @click="doGeneratePlan()">Regenerate Plan →</button>
             <button class="btn btn-primary" @click="doAdjustSchedule()">⚡ Adjust schedule for me</button>
           </div>
@@ -1627,11 +1485,378 @@ window.StudyApp = {
 
     <!-- ════════════════ SETTINGS ════════════════ -->
     <template v-else-if="!loading && screen === 'settings'">
-      <div class="section-title">Settings</div>
+      <div class="section-title">Edit Study Plan</div>
 
       <div class="card" style="margin-bottom:20px">
         <div class="card-body">
+
+          <!-- ── 1. Exam Setup (read-only except exam date) ── -->
           <div class="settings-section">
+            <h3>Exam Setup</h3>
+
+            <div v-if="!isRestrictedMode" class="mode-cards" style="pointer-events:none;opacity:.65">
+              <div class="mode-card" :class="{ selected: topicInputMode === 'examName' }">
+                <h4>Exam name only</h4>
+                <p>Enter the exam name. AI creates a structured hierarchy of subject areas and granular study units.</p>
+              </div>
+              <div class="mode-card" :class="{ selected: topicInputMode === 'granularList' }">
+                <h4>Manually enter topic list</h4>
+                <p>Paste your complete list. Use indentation or # headings to create groups. AI estimates difficulty only.</p>
+              </div>
+            </div>
+
+            <div class="form-group" v-if="isRestrictedMode">
+              <label>Exam</label>
+              <select v-model="examName" disabled>
+                <option v-for="exam in predefinedExams" :key="exam.id" :value="exam.name">{{ exam.name }}</option>
+              </select>
+            </div>
+
+            <div class="form-group" v-if="!isRestrictedMode && topicInputMode === 'examName'">
+              <label>Exam name</label>
+              <input type="text" v-model="examName" disabled />
+            </div>
+
+            <div class="form-group" v-if="!isRestrictedMode && topicInputMode === 'granularList'">
+              <label>Topic list</label>
+              <textarea v-model="granularTopicsText" rows="6" disabled></textarea>
+            </div>
+
+            <div class="row">
+              <div class="col">
+                <div class="form-group">
+                  <label>When would you start studying?</label>
+                  <input type="date" v-model="startDate" disabled />
+                </div>
+              </div>
+              <div class="col">
+                <div class="form-group">
+                  <label>When do you need to be ready by?</label>
+                  <input type="date" v-model="examDate" />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group" v-if="!isRestrictedMode && freeText">
+              <label>Additional notes <span style="font-weight:400;color:var(--c-muted)">(read only)</span></label>
+              <textarea v-model="freeText" rows="3" disabled></textarea>
+            </div>
+          </div>
+
+          <!-- ── 2. Topics Setup ── -->
+          <div class="settings-section">
+            <h3>Topics Setup</h3>
+
+            <div class="section-sub" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px">
+              <span>
+                {{ studyTopicCount }} study topic{{ studyTopicCount !== 1 ? 's' : '' }}
+                <span v-if="groupCount > 0"> in {{ groupCount }} group{{ groupCount !== 1 ? 's' : '' }}</span>.
+              </span>
+              <button v-if="hasGroups" class="btn btn-secondary btn-sm" @click="toggleAllGroups()">
+                {{ allGroupsCollapsed ? '↔ Expand all groups' : '⊟ Collapse all groups' }}
+              </button>
+            </div>
+
+            <div class="topics-table-wrap">
+              <table class="topics-table">
+                <thead>
+                  <tr>
+                    <th class="col-check"></th>
+                    <th class="col-title">Topic</th>
+                    <th class="col-diff">Time allocation</th>
+                    <th class="col-state">Areas of Preparation</th>
+                    <th class="col-actions">Order</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template v-for="(topic, idx) in topics" :key="topic.id">
+
+                    <!-- Group header row -->
+                    <tr v-if="topic.isGroup" class="topic-group-row"
+                        draggable="true"
+                        :class="{ 'drag-over': dragOverIdx === idx, 'dragging': dragSrcIdx === idx }"
+                        @dragstart="onDragStart($event, idx)"
+                        @dragover.prevent="onDragOver($event, idx)"
+                        @drop.prevent="onDrop($event, idx)"
+                        @dragend="onDragEnd">
+                      <td class="col-check col-check-group">
+                        <input type="checkbox"
+                               :checked="isGroupAllEnabled(topic.id)"
+                               @change="toggleGroupEnabled(topic.id, $event.target.checked)" />
+                        <span class="group-collapse-btn" @click="toggleGroupCollapse(topic.id)">
+                          {{ isGroupCollapsed(topic.id) ? '▶' : '▼' }}
+                        </span>
+                      </td>
+                      <td class="col-title">
+                        <input type="text" v-model="topic.title" style="font-weight:600" />
+                        <span style="font-size:.72rem;color:var(--c-muted);margin-left:6px">
+                          {{ subtopicCount(topic.id) }} sub-topic{{ subtopicCount(topic.id) !== 1 ? 's' : '' }}
+                        </span>
+                      </td>
+                      <td class="col-diff">
+                        <select class="select-sm" @change="groupBulkDifficulty(topic.id, $event.target.value)">
+                          <option value="">Set all…</option>
+                          <option value="easy">All Low</option>
+                          <option value="medium">All Standard</option>
+                          <option value="hard">All High</option>
+                        </select>
+                      </td>
+                      <td class="col-state">
+                        <label class="phase-check"><input type="checkbox" :checked="groupLearnState(topic.id) === 'all'" :indeterminate.prop="groupLearnState(topic.id) === 'mixed'" @change="setGroupLearn(topic.id, $event.target.checked)" /> Learning</label>
+                        <label class="phase-check"><input type="checkbox" :checked="groupPracticeState(topic.id) === 'all'" :indeterminate.prop="groupPracticeState(topic.id) === 'mixed'" @change="setGroupPractice(topic.id, $event.target.checked)" /> Practicing</label>
+                        <label class="phase-check"><input type="checkbox" :checked="groupReviseState(topic.id) === 'all'" :indeterminate.prop="groupReviseState(topic.id) === 'mixed'" @change="setGroupRevise(topic.id, $event.target.checked)" /> Revising</label>
+                      </td>
+                      <td class="col-actions">
+                        <button class="btn btn-ghost btn-icon" title="Move group up"   @click="moveGroup(topic.id, -1)">↑</button>
+                        <button class="btn btn-ghost btn-icon" title="Move group down" @click="moveGroup(topic.id,  1)">↓</button>
+                        <button v-if="!isRestrictedMode" class="btn btn-ghost btn-icon" title="Add sub-topic" @click="addSubTopic(topic.id)">+</button>
+                      </td>
+                    </tr>
+
+                    <!-- Sub-topic row (hidden when group is collapsed) -->
+                    <tr v-else-if="topic.parentId && !isGroupCollapsed(topic.parentId)"
+                        draggable="true"
+                        :class="{ 'topic-subtopic-row': true, 'topic-row--disabled': topic.enabled === false, 'drag-over': dragOverIdx === idx, 'dragging': dragSrcIdx === idx }"
+                        @dragstart="onDragStart($event, idx)"
+                        @dragover.prevent="onDragOver($event, idx)"
+                        @drop.prevent="onDrop($event, idx)"
+                        @dragend="onDragEnd">
+                      <td class="col-check" style="padding-left:20px">
+                        <input type="checkbox"
+                               :checked="topic.enabled !== false"
+                               @change="topic.enabled = $event.target.checked" />
+                      </td>
+                      <td class="col-title">
+                        <input type="text" v-model="topic.title" style="padding-left:4px" />
+                      </td>
+                      <td class="col-diff">
+                        <select class="select-sm" v-model="topic.difficulty">
+                          <option value="easy">Low</option>
+                          <option value="medium">Standard</option>
+                          <option value="hard">High</option>
+                        </select>
+                      </td>
+                      <td class="col-state">
+                        <label class="phase-check"><input type="checkbox" :checked="topic.doLearn !== false"    @change="topic.doLearn    = $event.target.checked" /> Learning</label>
+                        <label class="phase-check"><input type="checkbox" :checked="topic.doPractice !== false" @change="topic.doPractice = $event.target.checked" /> Practicing</label>
+                        <label class="phase-check"><input type="checkbox" :checked="topic.doRevise !== false"   @change="topic.doRevise   = $event.target.checked" /> Revising</label>
+                      </td>
+                      <td class="col-actions">
+                        <button class="btn btn-ghost btn-icon" title="Move up"   @click="moveSubTopic(topic.id, -1)">↑</button>
+                        <button class="btn btn-ghost btn-icon" title="Move down" @click="moveSubTopic(topic.id,  1)">↓</button>
+                      </td>
+                    </tr>
+
+                    <!-- Standalone topic row -->
+                    <tr v-else-if="!topic.isGroup && !topic.parentId"
+                        draggable="true"
+                        :class="{ 'topic-row': true, 'topic-row--disabled': topic.enabled === false, 'drag-over': dragOverIdx === idx, 'dragging': dragSrcIdx === idx }"
+                        @dragstart="onDragStart($event, idx)"
+                        @dragover.prevent="onDragOver($event, idx)"
+                        @drop.prevent="onDrop($event, idx)"
+                        @dragend="onDragEnd">
+                      <td class="col-check">
+                        <input type="checkbox"
+                               :checked="topic.enabled !== false"
+                               @change="topic.enabled = $event.target.checked" />
+                      </td>
+                      <td class="col-title">
+                        <input type="text" v-model="topic.title" />
+                      </td>
+                      <td class="col-diff">
+                        <select class="select-sm" v-model="topic.difficulty">
+                          <option value="easy">Low</option>
+                          <option value="medium">Standard</option>
+                          <option value="hard">High</option>
+                        </select>
+                      </td>
+                      <td class="col-state">
+                        <label class="phase-check"><input type="checkbox" :checked="topic.doLearn !== false"    @change="topic.doLearn    = $event.target.checked" /> Learning</label>
+                        <label class="phase-check"><input type="checkbox" :checked="topic.doPractice !== false" @change="topic.doPractice = $event.target.checked" /> Practicing</label>
+                        <label class="phase-check"><input type="checkbox" :checked="topic.doRevise !== false"   @change="topic.doRevise   = $event.target.checked" /> Revising</label>
+                      </td>
+                      <td class="col-actions">
+                        <button class="btn btn-ghost btn-icon" title="Move up"    @click="moveTopic(idx, -1)" :disabled="idx === 0">↑</button>
+                        <button class="btn btn-ghost btn-icon" title="Move down"  @click="moveTopic(idx,  1)" :disabled="idx === topics.length - 1">↓</button>
+                      </td>
+                    </tr>
+
+                  </template>
+                </tbody>
+              </table>
+            </div>
+
+            <div v-if="!isRestrictedMode" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-secondary btn-sm" @click="addTopic()">+ Add Standalone Topic</button>
+              <button class="btn btn-secondary btn-sm" @click="addGroup()">+ Add Group</button>
+            </div>
+          </div>
+
+          <!-- ── 3. Study Schedule ── -->
+          <div class="settings-section">
+            <h3>Study Schedule</h3>
+
+            <!-- Plan Summary Bar -->
+            <div v-if="calculatedStudyHours !== null || topics.filter(t => !t.isGroup).length > 0" class="plan-stats-bar" style="margin-bottom:8px">
+              <div class="plan-stat plan-stat--highlight"
+                   :class="planFits === true ? 'plan-stat--green' : planFits === false ? 'plan-stat--red' : ''">
+                <span class="plan-stat-value">~{{ allocatedStudyHours ?? 0 }}h / ~{{ calculatedStudyHours ?? 0 }}h</span>
+                <span class="plan-stat-label">study time allocated</span>
+              </div>
+              <div class="plan-stat" v-if="recommendedAvailableDays > 0">
+                <span class="plan-stat-value">{{ recommendedAvailableDays }}</span>
+                <span class="plan-stat-label">study days</span>
+              </div>
+              <div class="plan-stat">
+                <span class="plan-stat-value">{{ topics.filter(t => !t.isGroup && t.enabled !== false).length }}</span>
+                <span class="plan-stat-label">topics</span>
+              </div>
+              <div class="plan-stat" v-if="numMocks > 0">
+                <span class="plan-stat-value">{{ numMocks }}</span>
+                <span class="plan-stat-label">mock exams</span>
+              </div>
+            </div>
+            <p v-if="planPreviewStatusText" class="plan-status-text"
+               :class="planFits === false ? 'plan-status-text--red' : 'plan-status-text--green'"
+               style="margin-bottom:16px">{{ planPreviewStatusText }}</p>
+
+            <!-- Break days -->
+            <div class="form-group">
+              <label>Break days</label>
+              <div class="form-hint" style="margin-bottom:8px">Dates excluded from study planning (holidays, travel, etc.).</div>
+              <div v-if="breakDays.length" class="break-days-list">
+                <span v-for="d in breakDays" :key="d" class="break-day-chip">
+                  {{ d }}
+                  <button class="break-day-remove" @click="removeBreakDay(d)" title="Remove">×</button>
+                </span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+                <button class="btn btn-secondary btn-sm" @click="addBreakDay()">+ Add break day</button>
+                <input ref="breakDayPicker" type="date" v-model="breakDayInputVal"
+                       :min="startDate" :max="examDate"
+                       @change="onBreakDayPicked"
+                       style="position:absolute;opacity:0;pointer-events:none;width:0;height:0" />
+              </div>
+            </div>
+
+            <!-- Weekly schedule table + chart -->
+            <div class="form-group">
+              <label>Study schedule</label>
+              <div class="form-hint" style="margin-bottom:10px">Set your base weekly pace. Each ± step = 20 minutes.</div>
+              <div class="schedule-layout">
+                <div class="schedule-left">
+                  <div class="sched-week-title">Week 1 — base pace</div>
+                  <div class="sched-table">
+                    <div class="sched-row sched-header-row">
+                      <span class="sched-day-col">Day</span>
+                      <span class="sched-ctrl-col">Daily study</span>
+                      <span class="sched-hint-col"></span>
+                    </div>
+                    <div v-for="dow in dowLabels" :key="dow.key" class="sched-row">
+                      <span class="sched-day-col">{{ dow.label.slice(0,3) }}</span>
+                      <div class="sched-ctrl-col">
+                        <div class="sg-time-ctrl">
+                          <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 20)" :disabled="firstWeek[dow.key] === 0">−</button>
+                          <span class="sg-time-val">{{ fmtMins(firstWeek[dow.key]) }}</span>
+                          <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(720, firstWeek[dow.key] + 20)">+</button>
+                        </div>
+                      </div>
+                      <span class="sched-hint-col sg-sessions-hint">
+                        <template v-if="firstWeek[dow.key] > 0">{{ Math.floor(firstWeek[dow.key] / unitLength) }} units</template>
+                        <template v-else>off</template>
+                      </span>
+                    </div>
+                    <div class="sched-row sched-apply-row">
+                      <span class="sched-day-col" style="font-size:.78rem;color:var(--c-muted)">All</span>
+                      <div class="sched-ctrl-col">
+                        <div class="sg-time-ctrl">
+                          <button class="sg-step-btn" @click="adjustAllDays(-20)">−</button>
+                          <span class="sg-time-val" style="font-size:.75rem;color:var(--c-muted)">apply to all</span>
+                          <button class="sg-step-btn" @click="adjustAllDays(20)">+</button>
+                        </div>
+                      </div>
+                      <span class="sched-hint-col"></span>
+                    </div>
+                  </div>
+                  <div class="sched-total">Week 1 total: <strong>{{ fmtMins(firstWeekTotalMins) }}</strong></div>
+                </div>
+                <div class="schedule-right">
+                  <div class="sched-week-title" style="visibility:hidden" aria-hidden="true">Week 1</div>
+                  <div class="sched-chart-wrap" @mousemove="onScheduleChartMouseMove" @mouseleave="scheduleTooltip.visible = false">
+                    <canvas ref="scheduleCanvas" class="sched-chart-canvas"></canvas>
+                    <div v-if="scheduleTooltip.visible" class="sched-tooltip"
+                         :style="{ left: scheduleTooltip.x + 'px', top: scheduleTooltip.y + 'px' }">
+                      {{ scheduleTooltip.text }}
+                    </div>
+                  </div>
+                  <div class="sched-chart-meta" v-if="schedulePreviewData.length">
+                    Total plan: ~<strong>{{ totalScheduleHours }}h</strong>
+                    <span style="color:var(--c-muted);font-size:.78rem"> across {{ schedulePreviewData.length }} week{{ schedulePreviewData.length !== 1 ? 's' : '' }}</span>
+                  </div>
+                  <div class="sched-chart-meta" v-else style="color:var(--c-muted);font-size:.82rem">
+                    Set study dates to see weekly preview
+                  </div>
+                  <div class="sched-ramp-row">
+                    <label class="sched-radio-opt">
+                      <input type="radio" value="linear" v-model="rampMode" />
+                      <span>Linear increase</span>
+                    </label>
+                    <label class="sched-radio-opt">
+                      <input type="radio" value="cram" v-model="rampMode" />
+                      <span>Cram at the end</span>
+                    </label>
+                  </div>
+                  <div class="sched-intensity-row">
+                    <span class="sched-intensity-label">Peak intensity</span>
+                    <div class="sg-time-ctrl">
+                      <button class="sg-step-btn" @click="adjustIntensity(-0.25)" :disabled="intensityMultiplier <= 1">−</button>
+                      <span class="sg-time-val" style="min-width:44px">×{{ intensityMultiplier.toFixed(2) }}</span>
+                      <button class="sg-step-btn" @click="adjustIntensity(0.25)">+</button>
+                    </div>
+                    <span class="sched-intensity-hint">~{{ fmtMins(lastWeekTotalMins) }}/week at exam</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Number of mocks -->
+            <div class="form-group">
+              <label>Number of mock exams</label>
+              <div class="form-hint" style="margin-bottom:6px">Minimum 3 recommended. Set to 0 to skip mock exams entirely.</div>
+              <div class="spinner-group">
+                <button @click="numMocks = Math.max(0, numMocks - 1)">−</button>
+                <input type="number" min="0" max="10" v-model.number="numMocks" />
+                <button @click="numMocks = Math.min(10, numMocks + 1)">+</button>
+              </div>
+            </div>
+
+            <!-- Mock date overrides -->
+            <div v-if="scheduledMocks.length > 0" class="form-group">
+              <label>Mock exam dates</label>
+              <div v-for="m in scheduledMocks" :key="m.mockNumber"
+                   style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+                <label style="font-size:.84rem;min-width:80px;font-weight:500">Mock {{ m.mockNumber }}</label>
+                <input type="date" style="width:160px"
+                       :value="mockDateOverrides[m.mockNumber] || m.dateStr"
+                       @change="mockDateOverrides = { ...mockDateOverrides, [m.mockNumber]: $event.target.value }" />
+                <span style="font-size:.78rem;color:var(--c-muted)" v-if="!mockDateOverrides[m.mockNumber]">scheduled</span>
+                <span style="font-size:.78rem;color:#2563eb" v-else>changed</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── 4. Export & Save ── -->
+          <div class="settings-section" v-if="planResult">
+            <h3>Export &amp; Save</h3>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-secondary btn-sm" @click="doExportDailyCsv()">⬇ Day-by-day CSV</button>
+              <button class="btn btn-secondary btn-sm" @click="doExportTopicsCsv()">⬇ Topics CSV</button>
+              <button class="btn btn-secondary btn-sm" @click="doExportJson()">⬇ Save plan (JSON)</button>
+            </div>
+          </div>
+
+          <!-- ── 5. API Configuration ── -->
+          <div class="settings-section" v-if="entryMode === 'full'">
             <h3>API Configuration</h3>
             <div class="form-group">
               <label>OpenAI API key</label>
@@ -1646,6 +1871,7 @@ window.StudyApp = {
             </div>
           </div>
 
+          <!-- ── 6. Advanced Settings ── -->
           <div class="settings-section">
             <div class="expandable">
               <div class="expandable-header" @click="advancedExpanded = !advancedExpanded">
@@ -1739,9 +1965,9 @@ window.StudyApp = {
                 </div>
 
                 <div class="form-group" style="padding-top:14px;border-top:1px solid var(--c-border)">
-                  <label style="color:var(--c-error)">Danger zone</label>
+                  <label style="color:var(--c-danger)">Danger zone</label>
                   <div style="margin-top:8px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
-                    <button class="btn btn-sm" style="border-color:var(--c-error);color:var(--c-error)" @click="doClearCachedData()">
+                    <button class="btn btn-sm" style="border-color:var(--c-danger);color:var(--c-danger)" @click="doClearCachedData()">
                       Delete cached data
                     </button>
                     <span class="form-hint" style="margin:0;align-self:center">Clears the current unsaved plan from memory. Saved &amp; tracked plans are not affected.</span>
@@ -1754,7 +1980,7 @@ window.StudyApp = {
 
           <div class="action-bar">
             <button class="btn btn-secondary" @click="doCancelSettings()">Cancel</button>
-            <button class="btn btn-primary" @click="doSaveSettings()">Save Settings</button>
+            <button class="btn btn-primary" @click="doSaveSettings()">{{ planResult ? 'Save &amp; Regenerate' : 'Save Settings' }}</button>
           </div>
         </div>
       </div>
@@ -1796,6 +2022,10 @@ window.StudyApp = {
       screen: 'home',
       settings,
 
+      // Entry mode — set from ?exam= URL param in mounted()
+      entryMode:  'predefined',   // 'predefined' | 'full'
+      debugMode:  false,
+
       // Step 1
       topicInputMode: 'examName',
       examName: '',
@@ -1825,6 +2055,11 @@ window.StudyApp = {
 
       recommendedHoursApplied: false,
 
+      // Populated by _runPlanPreview() — exact results from a real (no-mock) plan run.
+      // All step-3 bar calculations read from here instead of using OVERHEAD_FACTOR estimates.
+      planPreviewData: null,
+      _planPreviewTimer: null,
+
       // Step 2 — group collapse state
       collapsedGroups: {},
 
@@ -1843,10 +2078,6 @@ window.StudyApp = {
       rescheduleFromPromptVisible: false,
       unmarkedPastPromptVisible: false,
       lastTrackedDate: null,
-      overflowExpanded: false,
-      overflowEditSchedule: false,
-      overflowEditDate: false,
-      overflowEditMocks: false,
       mockDateOverrides: {},
       chartCollapsed:   false,
 
@@ -1861,7 +2092,6 @@ window.StudyApp = {
       currentCalWeekStart: null,
       calViewMode:        'month',   // 'month' | 'week'
       calendarPopover:     null,
-      dayDetailCollapsed:  false,
 
       // Chart tooltip
       tooltip:  null,
@@ -1914,7 +2144,29 @@ window.StudyApp = {
 
     allGroupsCollapsed() {
       const ids = this.topics.filter(t => t.isGroup).map(t => t.id);
-      return ids.length > 0 && ids.every(id => this.collapsedGroups[id]);
+      return ids.length > 0 && ids.every(id => this.collapsedGroups[id] !== false);
+    },
+
+    allTopicsLearnState() {
+      const leaves = this.topics.filter(t => !t.isGroup && t.enabled !== false);
+      if (!leaves.length) return 'none';
+      const allOn  = leaves.every(t => t.doLearn !== false);
+      const allOff = leaves.every(t => t.doLearn === false);
+      return allOn ? 'all' : allOff ? 'none' : 'mixed';
+    },
+    allTopicsPracticeState() {
+      const leaves = this.topics.filter(t => !t.isGroup && t.enabled !== false);
+      if (!leaves.length) return 'none';
+      const allOn  = leaves.every(t => t.doPractice !== false);
+      const allOff = leaves.every(t => t.doPractice === false);
+      return allOn ? 'all' : allOff ? 'none' : 'mixed';
+    },
+    allTopicsReviseState() {
+      const leaves = this.topics.filter(t => !t.isGroup && t.enabled !== false);
+      if (!leaves.length) return 'none';
+      const allOn  = leaves.every(t => t.doRevise !== false);
+      const allOff = leaves.every(t => t.doRevise === false);
+      return allOn ? 'all' : allOff ? 'none' : 'mixed';
     },
 
     // Collapsed topic summary: one entry per group (or standalone topic)
@@ -2013,14 +2265,18 @@ window.StudyApp = {
 
     screenLabel() {
       return {
-        step1:    'New Plan — Step 1: Topic Input',
-        step2:    'New Plan — Step 2: Review Topics',
-        step3:    'New Plan — Step 3: Schedule',
+        step1:    'New Plan — Step 1: Exam Setup',
+        step2:    'New Plan — Step 2: Topics Setup',
+        step3:    'New Plan — Step 3: Study Schedule',
         step4:    this.trackingMode ? 'Tracking Plan' : 'Your Study Plan',
         settings: 'Settings',
         update:   'Update Existing Plan',
         planList: 'Saved Plans',
       }[this.screen] || '';
+    },
+
+    isRestrictedMode() {
+      return this.entryMode === 'predefined';
     },
 
     selectedPredefinedExam() {
@@ -2110,6 +2366,134 @@ window.StudyApp = {
         }
       }
       return Math.round(totalMins / 60);
+    },
+
+    allocatedStudyHours() {
+      const total = this.schedulePreviewData.reduce((s, w) => s + w.hours, 0);
+      return total > 0 ? Math.round(total) : null;
+    },
+
+    calculatedStudyHours() {
+      return this.computedSessionLengthPreview?.requiredHours ?? null;
+    },
+
+    planFits() {
+      const prev = this.computedSessionLengthPreview;
+      if (!prev) return null;
+      return prev.lpFits;
+    },
+
+    // Status text for the step-3 bar (pre-generation, from planPreviewData).
+    planPreviewStatusText() {
+      const p = this.planPreviewData;
+      if (!p) return null;
+      const y = p.totalTopics;
+      const x = p.learnComplete;
+      const n = p.practiceComplete;
+      const prefix = !p.lpFits ? 'WARNING: ' : '';
+      let msg = `${prefix}Complete learning of ${x} out of ${y} topics. Complete practice of ${n} out of ${y} topics.`;
+      if (!p.lpFits && p.extraHours > 0) {
+        msg += ` You need ~${p.extraHours} more hour${p.extraHours !== 1 ? 's' : ''} to complete the full plan.`;
+      }
+      if (p.sessionLength) {
+        msg += ` Estimated time to complete a basic unit of activity with this schedule is ${p.sessionLength} minutes.`;
+      }
+      return msg;
+    },
+
+    // Status text for the step-4 bar (post-generation, from planResult.overflow).
+    planResultStatusText() {
+      if (!this.planResult) return null;
+      const ov = this.planResult.overflow;
+      const y  = this.planResult.topics.length;
+      const x  = y - ov.incompleteLearnTopics.length;
+      const n  = y - ov.incompleteMCQTopics.length;
+      const prefix = ov.hasOverflow ? 'WARNING: ' : '';
+      let msg = `${prefix}Complete learning of ${x} out of ${y} topics. Complete practice of ${n} out of ${y} topics.`;
+      if (ov.hasOverflow && ov.totalMissingSessions > 0) {
+        const extra = Math.ceil(ov.totalMissingSessions * this.planResult.sessionLength / 60);
+        if (extra > 0) msg += ` You need ~${extra} more hour${extra !== 1 ? 's' : ''} to complete the full plan.`;
+      }
+      if (this.planResult.sessionLength) {
+        msg += ` Estimated time to complete a basic unit of activity with this schedule is ${this.planResult.sessionLength} minutes.`;
+      }
+      return msg;
+    },
+
+    planFutureHours() {
+      if (!this.hydratedCalendar.length) return null;
+      const today      = this.todayKey;
+      const mockMins   = (this.settings && this.settings.mockDuration) || 90;
+      const sessionMins = this.planResult?.sessionLength || 20;
+      let totalMins = 0;
+      for (const day of this.hydratedCalendar) {
+        const dk = day.date instanceof Date ? day.date.toISOString().slice(0, 10) : String(day.date);
+        if (dk < today) continue;
+        for (const s of (day.sessions || [])) {
+          if (s.activityType === 'mock')          totalMins += mockMins;
+          else if (s.activityType !== 'postMock') totalMins += sessionMins;
+        }
+      }
+      return Math.round(totalMins / 60);
+    },
+
+    daysLeft() {
+      if (!this.examDate) return null;
+      const today = new Date(this.todayKey + 'T00:00:00Z');
+      const exam  = new Date(this.examDate  + 'T00:00:00Z');
+      return Math.max(0, Math.floor((exam - today) / 86400000));
+    },
+
+    studyTimeLeftHours() {
+      if (!this.hydratedCalendar.length || !this.trackingMode) return null;
+      const today      = this.todayKey;
+      const mockMins   = (this.settings && this.settings.mockDuration) || 90;
+      const sessionMins = this.planResult?.sessionLength || 20;
+      let totalMins = 0;
+      for (const day of this.hydratedCalendar) {
+        const dk = day.date instanceof Date ? day.date.toISOString().slice(0, 10) : String(day.date);
+        if (dk < today) continue;
+        for (const s of (day.sessions || [])) {
+          const key = this.sessionKey(dk, s);
+          if (this.completionStatus[key] === 'done' || this.completionStatus[key] === 'skip') continue;
+          if (s.activityType === 'mock')          totalMins += mockMins;
+          else if (s.activityType !== 'postMock') totalMins += sessionMins;
+        }
+      }
+      return Math.round(totalMins / 60);
+    },
+
+    topicsLeft() {
+      if (!this.planResult || !this.hydratedCalendar.length || !this.trackingMode) return null;
+      const topicIds = this.planResult.topics.map(t => t.id);
+      const learnKeys = {}, practiceKeys = {};
+      for (const day of this.hydratedCalendar) {
+        const dk = day.date instanceof Date ? day.date.toISOString().slice(0, 10) : String(day.date);
+        for (const s of (day.sessions || [])) {
+          if (s.topicId == null) continue;
+          const key = this.sessionKey(dk, s);
+          if (s.activityType === 'learn')    { (learnKeys[s.topicId]    = learnKeys[s.topicId]    || []).push(key); }
+          if (s.activityType === 'practice') { (practiceKeys[s.topicId] = practiceKeys[s.topicId] || []).push(key); }
+        }
+      }
+      return topicIds.filter(id => {
+        const l = (learnKeys[id]    || []).every(k => this.completionStatus[k] === 'done');
+        const p = (practiceKeys[id] || []).every(k => this.completionStatus[k] === 'done');
+        return !(l && p);
+      }).length;
+    },
+
+    mocksLeft() {
+      if (!this.planResult || !this.trackingMode) return null;
+      const total = this.planResult.mocks.filter(m => m.type === 'mock').length;
+      let done = 0;
+      for (const day of this.hydratedCalendar) {
+        const dk = day.date instanceof Date ? day.date.toISOString().slice(0, 10) : String(day.date);
+        for (const s of (day.sessions || [])) {
+          if (s.activityType === 'mock' && this.completionStatus[this.sessionKey(dk, s)] === 'done') done++;
+        }
+      }
+      return Math.max(0, total - done);
     },
 
     scheduledMocks() {
@@ -2374,34 +2758,12 @@ window.StudyApp = {
       return Math.round(totalMins / this.recommendedAvailableDays / unit) * unit;
     },
 
+    // Reads from planPreviewData (populated by _runPlanPreview via a debounced watcher).
+    // All step-3 bar values flow through here so there is one calculation path.
     computedSessionLengthPreview() {
-      if (!this.startDate || !this.examDate) return null;
-      if (typeof StudyPlanner === 'undefined' || !StudyPlanner.countCalendarMinutes) return null;
-      const start = new Date(this.startDate + 'T00:00:00Z');
-      const exam  = new Date(this.examDate  + 'T00:00:00Z');
-      if (exam <= start) return null;
-      const leafTopics = this.topics.filter(t => !t.isGroup);
-      if (!leafTopics.length) return null;
-      const mergedSettings = {
-        lnTable: this.settings.lnTable || { easy: 1, medium: 2, hard: 3 },
-        pnTable: this.settings.pnTable || { easy: 3, medium: 4, hard: 5 },
-      };
-      const totalMins  = StudyPlanner.countCalendarMinutes(start, exam, this.firstWeek, this.lastWeekComputed, this.rampMode, this.breakDays || []);
-      const totalUnits = StudyPlanner.computeTotalWorkUnits(
-        leafTopics.map(t => ({ difficulty: t.difficulty || 'medium' })),
-        mergedSettings
-      );
-      if (!totalUnits || !totalMins) return null;
-      const rawT = totalMins / (totalUnits * StudyPlanner.OVERHEAD_FACTOR);
-      const T    = StudyPlanner.computeOptimalSessionLength(
-        totalMins, totalUnits, StudyPlanner.OVERHEAD_FACTOR,
-        StudyPlanner.SESSION_MIN, StudyPlanner.SESSION_MAX
-      );
-      return {
-        sessionLength: Math.round(T * 10) / 10,
-        insufficient:  rawT < StudyPlanner.SESSION_MIN,
-        rawT:          Math.round(rawT * 10) / 10,
-      };
+      const p = this.planPreviewData;
+      if (!p) return null;
+      return p;
     },
 
     totalScheduleHours() {
@@ -2499,7 +2861,7 @@ window.StudyApp = {
           }
         }
 
-        return { ...t, difficulty, startingState };
+        return { ...t, difficulty, startingState, ...phasesFromState(startingState) };
       });
     },
 
@@ -2631,13 +2993,15 @@ window.StudyApp = {
           this.topics = flat.map(t => {
             const id = this._nextTopicId++;
             if (t.isGroup) titleToId[t.title] = id;
+            const ss = t.startingState || 'Not Started';
             return {
               id,
               title:         t.title,
               isGroup:       t.isGroup,
               parentId:      t.parentTitle ? (titleToId[t.parentTitle] || null) : null,
               difficulty:    t.difficulty,
-              startingState: t.startingState || 'Not Started',
+              startingState: ss,
+              ...phasesFromState(t.isGroup ? null : ss),
             };
           });
 
@@ -2664,10 +3028,11 @@ window.StudyApp = {
             const id = this._nextTopicId++;
             tempIdToNewId[t._tempId] = id;
             if (t.isGroup) {
-              return { id, title: t.title, isGroup: true, parentId: null, difficulty: null, startingState: null, _tempId: t._tempId, _parentTempId: t._parentTempId };
+              return { id, title: t.title, isGroup: true, parentId: null, difficulty: null, startingState: null, enabled: true, doLearn: true, doPractice: true, doRevise: true, _tempId: t._tempId, _parentTempId: t._parentTempId };
             }
             const ai = raw[leafIdx++] || {};
-            return { id, title: t.title, isGroup: false, difficulty: ai.difficulty || 'medium', startingState: ai.startingState || 'Not Started', _tempId: t._tempId, _parentTempId: t._parentTempId };
+            const ss = ai.startingState || 'Not Started';
+            return { id, title: t.title, isGroup: false, difficulty: ai.difficulty || 'medium', startingState: ss, ...phasesFromState(ss), _tempId: t._tempId, _parentTempId: t._parentTempId };
           });
           this.topics = allTopics.map(({ _tempId, _parentTempId, ...t }) => ({
             ...t,
@@ -2695,6 +3060,7 @@ window.StudyApp = {
           this.topics = withIds.map(({ parentTitle, ...t }) => ({
             ...t,
             parentId: parentTitle ? (titleToId[parentTitle] || null) : null,
+            ...phasesFromState(t.isGroup ? null : (t.startingState || 'Not Started')),
           }));
         }
 
@@ -2722,6 +3088,7 @@ window.StudyApp = {
         title:         '',
         difficulty:    'medium',
         startingState: 'Not Started',
+        ...phasesFromState('Not Started'),
       });
     },
 
@@ -2834,6 +3201,10 @@ window.StudyApp = {
         parentId:      null,
         difficulty:    null,
         startingState: null,
+        enabled:       true,
+        doLearn:       true,
+        doPractice:    true,
+        doRevise:      true,
       });
     },
 
@@ -2851,6 +3222,7 @@ window.StudyApp = {
         parentId,
         difficulty:    'medium',
         startingState: 'Not Started',
+        ...phasesFromState('Not Started'),
       });
     },
 
@@ -2859,14 +3231,12 @@ window.StudyApp = {
     },
 
     toggleGroupCollapse(groupId) {
-      this.collapsedGroups = {
-        ...this.collapsedGroups,
-        [groupId]: !this.collapsedGroups[groupId],
-      };
+      const collapsed = this.collapsedGroups[groupId] !== false;
+      this.collapsedGroups = { ...this.collapsedGroups, [groupId]: !collapsed };
     },
 
     isGroupCollapsed(groupId) {
-      return !!this.collapsedGroups[groupId];
+      return this.collapsedGroups[groupId] !== false;
     },
 
     subtopicCount(groupId) {
@@ -2882,9 +3252,21 @@ window.StudyApp = {
 
     groupBulkState(groupId, value) {
       if (!value) return;
+      const phases = phasesFromState(value);
       this.topics = this.topics.map(t =>
-        t.parentId === groupId ? { ...t, startingState: value } : t
+        t.parentId === groupId ? { ...t, startingState: value, ...phases } : t
       );
+    },
+
+    toggleGroupEnabled(groupId, enabled) {
+      this.topics = this.topics.map(t =>
+        t.parentId === groupId ? { ...t, enabled } : t
+      );
+    },
+
+    isGroupAllEnabled(groupId) {
+      const subs = this.topics.filter(t => t.parentId === groupId);
+      return subs.length === 0 || subs.every(t => t.enabled !== false);
     },
 
     moveSubTopic(topicId, dir) {
@@ -2912,9 +3294,135 @@ window.StudyApp = {
       this.collapsedGroups = next;
     },
 
+    setAllTopicsLearn(checked) {
+      this.topics.filter(t => !t.isGroup).forEach(t => { t.doLearn = checked; });
+    },
+    setAllTopicsPractice(checked) {
+      this.topics.filter(t => !t.isGroup).forEach(t => { t.doPractice = checked; });
+    },
+    setAllTopicsRevise(checked) {
+      this.topics.filter(t => !t.isGroup).forEach(t => { t.doRevise = checked; });
+    },
+
+    groupLearnState(groupId) {
+      const children = this.topics.filter(t => t.parentId === groupId && t.enabled !== false);
+      if (!children.length) return 'none';
+      const allOn = children.every(t => t.doLearn !== false);
+      const allOff = children.every(t => t.doLearn === false);
+      return allOn ? 'all' : allOff ? 'none' : 'mixed';
+    },
+    groupPracticeState(groupId) {
+      const children = this.topics.filter(t => t.parentId === groupId && t.enabled !== false);
+      if (!children.length) return 'none';
+      const allOn = children.every(t => t.doPractice !== false);
+      const allOff = children.every(t => t.doPractice === false);
+      return allOn ? 'all' : allOff ? 'none' : 'mixed';
+    },
+    groupReviseState(groupId) {
+      const children = this.topics.filter(t => t.parentId === groupId && t.enabled !== false);
+      if (!children.length) return 'none';
+      const allOn = children.every(t => t.doRevise !== false);
+      const allOff = children.every(t => t.doRevise === false);
+      return allOn ? 'all' : allOff ? 'none' : 'mixed';
+    },
+    setGroupLearn(groupId, checked) {
+      this.topics.filter(t => t.parentId === groupId).forEach(t => { t.doLearn = checked; });
+    },
+    setGroupPractice(groupId, checked) {
+      this.topics.filter(t => t.parentId === groupId).forEach(t => { t.doPractice = checked; });
+    },
+    setGroupRevise(groupId, checked) {
+      this.topics.filter(t => t.parentId === groupId).forEach(t => { t.doRevise = checked; });
+    },
+
     toggleChartCollapsed() {
       this.chartCollapsed = !this.chartCollapsed;
       this.$nextTick(() => this.renderChart());
+    },
+
+    // ── Plan preview (step 3 bar) ───────────────────────────────────────────
+
+    // Schedules a debounced call to _runPlanPreview (300 ms).
+    _schedulePlanPreview() {
+      if (this._planPreviewTimer) clearTimeout(this._planPreviewTimer);
+      this._planPreviewTimer = setTimeout(() => this._runPlanPreview(), 300);
+    },
+
+    // Runs the actual scheduler (no mock placement) up to twice to converge on
+    // an accurate session length, then stores the result in planPreviewData.
+    // This is the single calculation point for all step-3 bar values.
+    _runPlanPreview() {
+      if (typeof StudyPlanner === 'undefined' || !StudyPlanner.previewPlan) return;
+      if (!this.startDate || !this.examDate) { this.planPreviewData = null; return; }
+
+      const leafTopics = this.topics.filter(t => !t.isGroup && t.enabled !== false);
+      if (!leafTopics.length) { this.planPreviewData = null; return; }
+
+      const srIntervals = (this.settingsSrText || '')
+        .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+
+      const base = {
+        topics: leafTopics.map(t => {
+          const doLearn    = t.doLearn    !== false;
+          const doPractice = t.doPractice !== false;
+          const doRevise   = t.doRevise   !== false;
+          return {
+            id: t.id, name: t.title, difficulty: t.difficulty || 'medium',
+            startingState: doLearn ? 'Not Started' : doPractice ? 'Learned' : 'Reviewing',
+            skipReviews: !doRevise,
+          };
+        }),
+        startDate:   new Date(this.startDate + 'T00:00:00Z'),
+        examDate:    new Date(this.examDate   + 'T00:00:00Z'),
+        firstWeek:   this.firstWeek,
+        lastWeek:    this.lastWeekComputed,
+        rampMode:    this.rampMode,
+        srIntervals: srIntervals.length ? srIntervals : [1, 6, 16, 45, 131],
+        blockedDays: this.breakDays || [],
+        settings: {
+          lnTable:                this.settings.lnTable,
+          pnTable:                this.settings.pnTable,
+          learningMode:           this.settings.learningMode || 'interleaved',
+          maxNewTopicsPerDay:     this.settings.maxNewTopicsPerDay,
+          maxDaysBetweenPractice: this.settings.maxDaysBetweenPractice || 7,
+        },
+        forcedSessionLength: this.unitLength || null,
+      };
+
+      // Mirror doGeneratePlan exactly: start at the computed T, search downward until
+      // LP fits or we hit SESSION_MIN. This guarantees step-3 and step-4 agree.
+      let r = StudyPlanner.previewPlan(base);
+      if (!r.lpFits) {
+        const minT = StudyPlanner.SESSION_MIN || 10;
+        for (let t = r.sessionLength - 1; t >= minT; t--) {
+          const candidate = StudyPlanner.previewPlan({ ...base, forcedSessionLength: t });
+          if (candidate.lpFits) { r = candidate; break; }
+          if (t === minT) r = candidate;
+        }
+      }
+
+      const MIN = StudyPlanner.SESSION_MIN || 10;
+      const totalTopics = leafTopics.length;
+      const totalSessionsNeeded = r.sessionCounts.total + r.overflow.totalMissingSessions;
+      const requiredHours = Math.round(totalSessionsNeeded * r.sessionLength / 60);
+      const allocatedHours = Math.round(r.totalMinutes / 60);
+      const extraHours = r.lpFits ? 0 : Math.max(0, requiredHours - allocatedHours);
+
+      this.planPreviewData = {
+        sessionLength:   r.sessionLength,
+        insufficient:    !r.lpFits && r.sessionLength <= MIN,
+        rawT:            r.totalMinutes > 0 && r.totalWorkUnits > 0
+                           ? Math.round(r.totalMinutes / (r.totalWorkUnits * (StudyPlanner.OVERHEAD_FACTOR || 1.25)) * 10) / 10
+                           : 0,
+        totalWorkUnits:  r.totalWorkUnits,
+        requiredHours,
+        lpFits:          r.lpFits,
+        overflow:        r.overflow,
+        totalTopics,
+        learnComplete:   totalTopics - r.overflow.incompleteLearnTopics.length,
+        practiceComplete: totalTopics - r.overflow.incompleteMCQTopics.length,
+        extraHours,
+      };
     },
 
     // ── Step 3 → Step 4 ────────────────────────────────────────────────────
@@ -2923,10 +3431,17 @@ window.StudyApp = {
     _planConfig() {
       // Groups are organisational only — filter them before passing to the scheduler
       const planTopics  = this.topics
-        .filter(t => !t.isGroup)
-        .map(t => ({
-          id: t.id, name: t.title, difficulty: t.difficulty, startingState: t.startingState,
-        }));
+        .filter(t => !t.isGroup && t.enabled !== false)
+        .map(t => {
+          const doLearn    = t.doLearn    !== false;
+          const doPractice = t.doPractice !== false;
+          const doRevise   = t.doRevise   !== false;
+          const startingState = doLearn ? 'Not Started' : doPractice ? 'Learned' : 'Reviewing';
+          return {
+            id: t.id, name: t.title, difficulty: t.difficulty,
+            startingState, skipReviews: !doRevise,
+          };
+        });
       const srIntervals = this.settingsSrText
         .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
       return {
@@ -2967,7 +3482,7 @@ window.StudyApp = {
     // Apply a finished generatePlan result to Vue state.
     _applyPlanResult(result) {
       this.planResult       = result;
-      this.hydratedCalendar = hydrateCalendar(result.calendar, result.topics, result.mocks);
+      this.hydratedCalendar = hydrateCalendar(result.calendar, result.topics, result.mocks, result.sessionLength);
 
       // Build chartTopicsData from this.topics (includes groups) merged with plan results (leaf data)
       const planById = {};
@@ -2981,10 +3496,6 @@ window.StudyApp = {
         startingState: planById[t.id]?.startingState || t.startingState || 'Not Started',
       }));
 
-      // Auto-expand the overflow panel and the schedule sub-section when the plan doesn't fit.
-      this.overflowExpanded     = result.overflow.hasOverflow;
-      this.overflowEditSchedule = result.overflow.hasOverflow;
-      this.overflowEditMocks    = false;
       this.expandedDays         = {};
       this.expandedTopicGroups  = {};
       this.calendarPopover      = null;
@@ -3347,7 +3858,6 @@ window.StudyApp = {
       if (!cell) { this.calendarPopover = null; return; }
       if (!this.trackingMode && !cell.sessions.length) { this.calendarPopover = null; return; }
       this.calendarPopover = cell;
-      this.dayDetailCollapsed = false;
     },
 
     // ── Day-by-day collapse ─────────────────────────────────────────────────
@@ -3360,16 +3870,6 @@ window.StudyApp = {
       return !!this.expandedDays[dateKey];
     },
 
-    // ── Topic summary group collapse ────────────────────────────────────────
-
-    toggleTopicGroup(groupId) {
-      this.expandedTopicGroups = { ...this.expandedTopicGroups, [groupId]: !this.expandedTopicGroups[groupId] };
-    },
-
-    isTopicGroupExpanded(groupId) {
-      return !!this.expandedTopicGroups[groupId];
-    },
-
     expandAllDays() {
       const expanded = {};
       this.studyDaysWithSessions.forEach(d => { expanded[d.dateKey] = true; });
@@ -3378,6 +3878,16 @@ window.StudyApp = {
 
     collapseAllDays() {
       this.expandedDays = {};
+    },
+
+    // ── Topic summary group collapse ────────────────────────────────────────
+
+    toggleTopicGroup(groupId) {
+      this.expandedTopicGroups = { ...this.expandedTopicGroups, [groupId]: !this.expandedTopicGroups[groupId] };
+    },
+
+    isTopicGroupExpanded(groupId) {
+      return !!this.expandedTopicGroups[groupId];
     },
 
     expandAllTopicGroups() {
@@ -3418,13 +3928,27 @@ window.StudyApp = {
     },
 
     applyRecommendedHours() {
-      const daily = this.recommendedDailyMins;
-      if (!daily || daily > 720) return;
-      for (const dow of ['mon','tue','wed','thu','fri','sat','sun']) {
-        this.firstWeek[dow] = daily;
+      if (!this.recommendedStudyHours || !this.startDate || !this.examDate) return;
+      const start = new Date(this.startDate + 'T00:00:00Z');
+      const exam  = new Date(this.examDate  + 'T00:00:00Z');
+      let nWeekday = 0, nWeekend = 0;
+      for (let cur = new Date(start); cur < exam; cur = new Date(cur.getTime() + 86400000)) {
+        const dow = cur.getUTCDay();
+        if (dow === 0 || dow === 6) nWeekend++; else nWeekday++;
       }
+      const denominator = nWeekday + 3 * nWeekend;
+      if (!denominator) return;
+      const unit = 20;
+      const weekdayMins = Math.max(unit, Math.ceil(this.recommendedStudyHours * 60 / denominator / unit) * unit);
+      const weekendMins = Math.min(720, weekdayMins * 3);
+      this.firstWeek = {
+        mon: weekdayMins, tue: weekdayMins, wed: weekdayMins,
+        thu: weekdayMins, fri: weekdayMins,
+        sat: weekendMins, sun: weekendMins,
+      };
       this.intensityMultiplier = 1;
       this.recommendedHoursApplied = true;
+      this.$nextTick(() => this._runPlanPreview());
     },
 
     addBreakDay() {
@@ -3654,21 +4178,13 @@ window.StudyApp = {
         .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
       this.settings.srIntervals = srArr.length ? srArr : [1,6,16,45,131];
 
-      const changed = JSON.stringify(this.settings) !== this.settingsSnapshot;
       StudyStorage.saveSettings(this.settings);
 
-      // Return to wherever the user came from
-      this.goBack();
-
-      // Regenerate if scheduling-relevant settings changed and a plan exists
-      const SCHEDULING_KEYS = ['lnTable', 'pnTable', 'learningMode', 'maxNewTopicsPerDay',
-                                'postMockSameDay', 'maxDaysBetweenPractice', 'srIntervals'];
-      const prev = this.settingsSnapshot ? JSON.parse(this.settingsSnapshot) : {};
-      const scheduleChanged = SCHEDULING_KEYS.some(
-        k => JSON.stringify(this.settings[k]) !== JSON.stringify(prev[k])
-      );
-      if (changed && scheduleChanged && this.planResult) {
+      if (this.planResult) {
+        // Regenerate with updated settings, topics, schedule, and exam date.
         this.doGeneratePlan();
+      } else {
+        this.goBack();
       }
     },
 
@@ -3698,6 +4214,20 @@ window.StudyApp = {
       }[type] || '';
     },
 
+    dayActivityBar(sessions) {
+      const COLORS = { learn: '#3b82f6', practice: '#f59e0b', review: '#16a34a', mock: '#7c3aed', postMock: '#c084fc' };
+      const LABELS = { learn: 'Learn', practice: 'Practice', review: 'Revise', mock: 'Mock Exam', postMock: 'Post-mock' };
+      const merged = this.mergeSessions(sessions);
+      const total  = merged.reduce((s, b) => s + b.count, 0);
+      if (!total) return [];
+      return merged.map(b => ({
+        color:        COLORS[b.activityType] || '#999',
+        pct:          (b.count / total) * 100,
+        label:        b.topicTitle ? `${LABELS[b.activityType] || b.activityType} · ${b.topicTitle}` : (LABELS[b.activityType] || b.activityType),
+        activityType: b.activityType,
+      }));
+    },
+
     mergeSessions(sessions) {
       if (!sessions.length) return [];
       const out = [];
@@ -3717,11 +4247,11 @@ window.StudyApp = {
       for (const block of out) {
         if (block.activityType === 'practice' && block.count > 1 && block._mcqNum != null) {
           const last = block._lastMcqNum ?? (block._mcqNum + block.count - 1);
-          block.reason = practiceReasonText(block._mcqNum, last, block.totalPN ?? 1, block.topicTitle);
+          block.reason = practiceReasonText(block._mcqNum, last, block.totalPN ?? 1);
         }
         if (block.activityType === 'learn' && block.count > 1 && block._lnNum != null) {
           const last = block._lastLnNum ?? (block._lnNum + block.count - 1);
-          block.reason = learnReasonText(block._lnNum, last, block.totalLN ?? 1, block.topicTitle);
+          block.reason = learnReasonText(block._lnNum, last, block.totalLN ?? 1);
         }
       }
       return out;
@@ -3798,7 +4328,7 @@ window.StudyApp = {
       if (saved.planResult) {
         const pr = this._revivePlanResult(saved.planResult);
         this.planResult = pr;
-        this.hydratedCalendar = hydrateCalendar(pr.calendar, pr.topics, pr.mocks);
+        this.hydratedCalendar = hydrateCalendar(pr.calendar, pr.topics, pr.mocks, pr.sessionLength);
         const planById = {};
         pr.topics.forEach(pt => { planById[pt.id] = pt; });
         this.chartTopicsData = this.topics.map(t => ({
@@ -3806,9 +4336,6 @@ window.StudyApp = {
           totalPN: planById[t.id]?.totalPN || 4,
           startingState: planById[t.id]?.startingState || t.startingState || 'Not Started',
         }));
-        this.overflowExpanded = pr.overflow?.hasOverflow || false;
-        this.overflowEditSchedule = false;
-        this.overflowEditMocks    = false;
         this.expandedDays         = {};
         this.expandedTopicGroups  = {};
       }
@@ -3842,9 +4369,6 @@ window.StudyApp = {
         this.autoMarkPromptVisible = false;
         this.topics = this._autoAdvanceTopicStates(saved);
       }
-
-      // Expand and scroll to today in day-by-day
-      this.expandedDays = { ...this.expandedDays, [this.todayKey]: true };
 
       this.initCalMonth();
       this.initCalWeek();
@@ -4056,9 +4580,13 @@ window.StudyApp = {
           const srIntervals = this.settingsSrText
             .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
           const config = {
-            topics: advancedTopics.filter(t => !t.isGroup).map(t => ({
-              id: t.id, name: t.title, difficulty: t.difficulty, startingState: t.startingState,
-            })),
+            topics: advancedTopics.filter(t => !t.isGroup && t.enabled !== false).map(t => {
+              const doLearn    = t.doLearn    !== false;
+              const doPractice = t.doPractice !== false;
+              const doRevise   = t.doRevise   !== false;
+              const startingState = doLearn ? 'Not Started' : doPractice ? 'Learned' : 'Reviewing';
+              return { id: t.id, name: t.title, difficulty: t.difficulty, startingState, skipReviews: !doRevise };
+            }),
             startDate:           new Date(effectiveStartDate + 'T00:00:00Z'),
             examDate:            new Date(this.examDate + 'T00:00:00Z'),
             firstWeek:           this.firstWeek,
@@ -4111,7 +4639,6 @@ window.StudyApp = {
           this.activeTab = 'calendar';
           this.$nextTick(() => {
             this.renderChart();
-            this.expandedDays = { ...this.expandedDays, [this.todayKey]: true };
           });
         } catch (e) {
           this.error = e.message;
@@ -4244,43 +4771,63 @@ window.StudyApp = {
 
   watch: {
     activeTab(newTab) {
-      if (newTab === 'trajectory' && !this.loading) {
-        this.$nextTick(() => this.renderChart());
+      if (newTab === 'trajectory') {
+        if (!this.debugMode) { this.activeTab = 'calendar'; return; }
+        if (!this.loading) this.$nextTick(() => this.renderChart());
       }
     },
     screen(newScreen) {
-      if (newScreen === 'step4' && this.activeTab === 'trajectory' && !this.loading) {
-        this.$nextTick(() => this.renderChart());
+      if (newScreen === 'step4' && this.activeTab === 'trajectory') {
+        if (!this.debugMode) { this.activeTab = 'calendar'; return; }
+        if (!this.loading) this.$nextTick(() => this.renderChart());
       }
-      if (newScreen === 'step3') {
+      if (newScreen === 'step3' || newScreen === 'settings') {
         this.$nextTick(() => {
           this.drawScheduleChart();
-          if (this.recommendedStudyHours && !this.recommendedHoursApplied) {
+          if (newScreen === 'step3' && this.recommendedStudyHours && !this.recommendedHoursApplied) {
             this.applyRecommendedHours();
           }
+          this._runPlanPreview();
         });
       }
     },
     firstWeek: {
       deep: true,
-      handler() { this.$nextTick(() => this.drawScheduleChart()); },
+      handler() { this.$nextTick(() => { this.drawScheduleChart(); this._schedulePlanPreview(); }); },
     },
-    intensityMultiplier() { this.$nextTick(() => this.drawScheduleChart()); },
-    rampMode()            { this.$nextTick(() => this.drawScheduleChart()); },
-    startDate()           { this.$nextTick(() => this.drawScheduleChart()); },
-    examDate()            { this.$nextTick(() => this.drawScheduleChart()); },
+    intensityMultiplier() { this.$nextTick(() => { this.drawScheduleChart(); this._schedulePlanPreview(); }); },
+    rampMode()            { this.$nextTick(() => { this.drawScheduleChart(); this._schedulePlanPreview(); }); },
+    startDate()           { this.$nextTick(() => { this.drawScheduleChart(); this._schedulePlanPreview(); }); },
+    examDate()            { this.$nextTick(() => { this.drawScheduleChart(); this._schedulePlanPreview(); }); },
     breakDays: {
       deep: true,
-      handler() { this.$nextTick(() => this.drawScheduleChart()); },
+      handler() { this.$nextTick(() => { this.drawScheduleChart(); this._schedulePlanPreview(); }); },
     },
-    overflowEditSchedule(val) { if (val) this.$nextTick(() => this.drawScheduleChart()); },
-    overflowExpanded(val) { if (val && this.overflowEditSchedule) this.$nextTick(() => this.drawScheduleChart()); },
+    topics: {
+      deep: true,
+      handler() { this._schedulePlanPreview(); },
+    },
   },
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
   mounted() {
     this.settingsSrText = (this.settings.srIntervals || [1,6,16,45,131]).join(', ');
+
+    // Parse ?exam= URL parameter to set entry mode
+    const urlExamParam = new URLSearchParams(window.location.search).get('exam') || '';
+    const examKey = urlExamParam.toLowerCase();
+    if (examKey === 'debug') {
+      this.entryMode = 'full';
+      this.debugMode = true;
+    } else if (examKey === 'user_defined') {
+      this.entryMode = 'full';
+    } else {
+      this.entryMode = 'predefined';
+      this.topicInputMode = 'examName';
+      if (examKey === 'cfa') this.examName = 'CFA Level 1';
+      else if (examKey === 'sqe') this.examName = 'SQE FLK1';
+    }
 
     // Load predefined exam index (silently ignore if unavailable — e.g. file:// protocol)
     if (typeof StudyExams !== 'undefined') {

@@ -284,7 +284,7 @@
     return {
       learn:    'Learning',
       practice: 'Practice',
-      review:   'Review',
+      review:   'Revise',
       mock:     'Mock Exam',
       postMock: 'Post-Mock Revision',
     }[type] || type;

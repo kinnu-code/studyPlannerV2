@@ -412,7 +412,7 @@
 
     // Prime SR clock for topics starting in Reviewing state.
     for (const topic of states) {
-      if (topic.startingState === 'Reviewing') {
+      if (topic.startingState === 'Reviewing' && !topic.skipReviews) {
         topic.nextReviewIndex      = 0;
         topic.nextReviewTargetDate = addDays(startDate, srIntervals[0]);
       }
@@ -433,7 +433,8 @@
       // Step 0: all due reviews — before learning or practice.
       //   Sort: first reviews (index 0) first; within tier, most-overdue first.
       const dueReviews = states
-        .filter(t => t.nextReviewTargetDate !== null &&
+        .filter(t => !t.skipReviews &&
+                     t.nextReviewTargetDate !== null &&
                      t.nextReviewTargetDate.getTime() <= day.date.getTime())
         .sort((a, b) => {
           const aFirst = a.nextReviewIndex === 0 ? 0 : 1;
@@ -493,6 +494,7 @@
       // Prime SR clock for any topic that just finished all PN on this day.
       for (const topic of states) {
         if (
+          !topic.skipReviews &&
           topic.pnCompleteDate &&
           dateKey(topic.pnCompleteDate) === dateKey(day.date) &&
           topic.nextReviewIndex === -1
@@ -658,9 +660,57 @@
     };
   }
 
+  // ─── previewPlan ───────────────────────────────────────────────────────────
+  // Lightweight single-pass version of generatePlan (no mock placement).
+  // Used by the study-schedule page to get exact session counts without the
+  // overhead of the iterative mock-convergence loop.
+  function previewPlan(config) {
+    const {
+      topics, startDate, examDate,
+      firstWeek, lastWeek, rampMode = 'linear',
+      srIntervals = [1, 6, 16, 45, 131],
+      settings = {}, blockedDays = [],
+      forcedSessionLength = null,
+    } = config;
+
+    const mergedSettings = {
+      lnTable:                { easy: 1, medium: 2, hard: 3 },
+      pnTable:                { easy: 3, medium: 4, hard: 5 },
+      maxNewTopicsPerDay:     4,
+      maxDaysBetweenPractice: 7,
+      ...settings,
+    };
+
+    const totalMinutes   = countCalendarMinutes(startDate, examDate, firstWeek, lastWeek, rampMode, blockedDays);
+    const totalWorkUnits = computeTotalWorkUnits(topics, mergedSettings);
+
+    const sessionLength = forcedSessionLength != null
+      ? Math.min(SESSION_MAX, Math.max(SESSION_MIN, Math.round(forcedSessionLength)))
+      : computeOptimalSessionLength(totalMinutes, totalWorkUnits, OVERHEAD_FACTOR, SESSION_MIN, SESSION_MAX);
+
+    const calendar    = buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode, sessionLength, blockedDays);
+    const topicStates = initTopics(topics, mergedSettings);
+    const pass        = runPass2(calendar, topicStates, srIntervals, mergedSettings, startDate);
+    const overflow    = detectOverflow(calendar, pass.states, examDate);
+    const sessionCounts = countSessionTypes(calendar);
+
+    const lpFits = overflow.incompleteLearnTopics.length === 0 &&
+                   overflow.incompleteMCQTopics.length === 0;
+
+    return {
+      sessionLength,
+      totalMinutes,
+      totalWorkUnits,
+      sessionCounts,
+      overflow,
+      lpFits,
+    };
+  }
+
   // ─── Public API ────────────────────────────────────────────────────────────
   return {
     generatePlan,
+    previewPlan,
     buildCalendar,
     initTopics,
     interpolateSessions,
