@@ -3,5 +3,20 @@
     "id": "cfa-level-1",
     "name": "CFA Level 1",
     "description": "CFA Institute Level 1 Examination"
+  },
+  {
+    "id": "sqe-flk1",
+    "name": "SQE1 – FLK1",
+    "description": "SRA Solicitors Qualifying Examination – Functioning Legal Knowledge 1"
+  },
+  {
+    "id": "sqe-flk2",
+    "name": "SQE1 – FLK2",
+    "description": "SRA Solicitors Qualifying Examination – Functioning Legal Knowledge 2"
+  },
+  {
+    "id": "sqe-flk1and2",
+    "name": "SQE1 – FLK1 & FLK2",
+    "description": "SRA Solicitors Qualifying Examination – Full Functioning Legal Knowledge (FLK1 and FLK2 combined)"
   }
 ]

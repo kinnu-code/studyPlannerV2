@@ -311,8 +311,8 @@ window.StudyApp = {
           </div>
           <div class="action-card" @click="loadPlanFile()">
             <div class="action-icon">🔄</div>
-            <h3>Update Existing Plan</h3>
-            <p>Load a saved plan JSON file to replan based on your current progress.</p>
+            <h3>Restore Plan</h3>
+            <p>Restores and continues tracking a saved plan.</p>
           </div>
         </div>
       </div>
@@ -1068,11 +1068,11 @@ window.StudyApp = {
                       </template>
                       <template v-else>
                         <button class="btn btn-xs track-btn"
-                                :class="isSessionDone(item.dateKey, block) ? 'track-btn--done' : ''"
-                                @click.stop="setSessionStatus(item.dateKey, block, 'done')">✓</button>
-                        <button class="btn btn-xs track-btn"
                                 :class="isSessionSkipped(item.dateKey, block) ? 'track-btn--skip' : ''"
-                                @click.stop="setSessionStatus(item.dateKey, block, 'skip')">✕</button>
+                                @click.stop="setSessionStatus(item.dateKey, block, 'skip')">✕ Defer</button>
+                        <button class="btn btn-xs track-btn"
+                                :class="isSessionDone(item.dateKey, block) ? 'track-btn--done' : ''"
+                                @click.stop="setSessionStatus(item.dateKey, block, 'done')">✓ Mark complete</button>
                       </template>
                     </template>
                   </span>
@@ -1260,11 +1260,11 @@ window.StudyApp = {
                       </template>
                       <template v-else>
                         <button class="btn btn-xs track-btn"
-                                :class="isSessionDone(calendarPopover.dateKey, block) ? 'track-btn--done' : ''"
-                                @click="setSessionStatus(calendarPopover.dateKey, block, 'done')">✓ Done</button>
-                        <button class="btn btn-xs track-btn"
                                 :class="isSessionSkipped(calendarPopover.dateKey, block) ? 'track-btn--skip' : ''"
-                                @click="setSessionStatus(calendarPopover.dateKey, block, 'skip')">✕ Skip</button>
+                                @click="setSessionStatus(calendarPopover.dateKey, block, 'skip')">✕ Defer</button>
+                        <button class="btn btn-xs track-btn"
+                                :class="isSessionDone(calendarPopover.dateKey, block) ? 'track-btn--done' : ''"
+                                @click="setSessionStatus(calendarPopover.dateKey, block, 'done')">✓ Mark complete</button>
                       </template>
                     </template>
                   </span>
@@ -1372,6 +1372,18 @@ window.StudyApp = {
 
 
 
+      </div>
+
+      <!-- Export Plan -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-body">
+          <div class="section-title" style="margin-bottom:12px">Export Plan</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-secondary btn-sm" @click="doExportDailyCsv()">⬇ Day-by-day CSV</button>
+            <button class="btn btn-secondary btn-sm" @click="doExportTopicsCsv()">⬇ Topics CSV</button>
+            <button class="btn btn-secondary btn-sm" @click="doExportJson()">⬇ Backup plan</button>
+          </div>
+        </div>
       </div>
 
       <!-- Post-generation prompt -->
@@ -1845,15 +1857,7 @@ window.StudyApp = {
             </div>
           </div>
 
-          <!-- ── 4. Export & Save ── -->
-          <div class="settings-section" v-if="planResult">
-            <h3>Export &amp; Save</h3>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn btn-secondary btn-sm" @click="doExportDailyCsv()">⬇ Day-by-day CSV</button>
-              <button class="btn btn-secondary btn-sm" @click="doExportTopicsCsv()">⬇ Topics CSV</button>
-              <button class="btn btn-secondary btn-sm" @click="doExportJson()">⬇ Save plan (JSON)</button>
-            </div>
-          </div>
+          <!-- ── 4. API Configuration ── -->
 
           <!-- ── 5. API Configuration ── -->
           <div class="settings-section" v-if="entryMode === 'full'">
