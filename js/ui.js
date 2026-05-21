@@ -19,28 +19,26 @@ const RECENT_MODELS = [
   'gpt-3.5-turbo',
 ];
 
-// ─── Reason generator ─────────────────────────────────────────────────────────
+// ─── Session reason helpers ───────────────────────────────────────────────────
 
-function sessionReason(session, allSessions, topicFinalState) {
-  const t = session.topicTitle || '';
-  switch (session.activityType) {
-    case 'learn':
-      return session.isFirstSession ? `First learning unit for ${t}` : `Continuing learning for ${t}`;
-    case 'practice': {
-      const done = (topicFinalState?.mcqSessionsDone || 0) - (session._mcqNum || 0);
-      const total = topicFinalState?.totalPN || '?';
-      const num = session._mcqNum || '?';
-      return `Practice unit ${num} of ${total} for ${t}`;
-    }
-    case 'review':
-      return `Spaced review of ${t}`;
-    case 'mock':
-      return `Full mock exam ${session.mockNumber || ''}`.trim();
-    case 'postMock':
-      return `Post-mock revision ${session.mockNumber || ''}`.trim();
-    default:
-      return '';
-  }
+// firstNum: session number where this block starts (1 = beginning of topic)
+// lastNum:  session number where this block ends
+// total:    total sessions of this type for the topic
+
+function learnReasonText(firstNum, lastNum, total, title) {
+  const pct = Math.round(lastNum / (total || 1) * 100 / 5) * 5;
+  if (pct >= 100) return `Finish learning all of ${title}`;
+  return firstNum <= 1
+    ? `learn up to ${pct}% of ${title}`
+    : `continue learning up to ${pct}% of ${title}`;
+}
+
+function practiceReasonText(firstNum, lastNum, total, title) {
+  const pct = Math.round(lastNum / (total || 1) * 100 / 5) * 5;
+  if (pct >= 100) return `Finish practicing all of ${title}`;
+  return firstNum <= 1
+    ? `practice up to ${pct}% of ${title}`
+    : `continue practicing up to ${pct}% of ${title}`;
 }
 
 // ─── Hydrate calendar: add topicTitle and reason to each session ──────────────
@@ -60,8 +58,9 @@ function hydrateCalendar(calendar, planTopics, mocks) {
     if (m.type === 'postMock') mockDateMap[dk] = { ...mockDateMap[dk], postMock: m.mockNumber };
   });
 
-  // Track mcqNum per topic as we walk the calendar
-  const mcqCount = {};
+  // Track session counts per topic as we walk the calendar
+  const mcqCount  = {};
+  const learnCount = {};
 
   return calendar.map(day => {
     const dk = day.date instanceof Date ? day.date.toISOString().slice(0, 10) : day.date;
@@ -97,17 +96,19 @@ function hydrateCalendar(calendar, planTopics, mocks) {
       if (s.activityType === 'practice') {
         mcqCount[s.topicId] = (mcqCount[s.topicId] || 0) + 1;
         const num   = mcqCount[s.topicId];
-        const total = stateMap[s.topicId]?.totalPN || '?';
-        reason = `Practice unit ${num} of ${total} for ${title}`;
+        const total = stateMap[s.topicId]?.totalPN || 1;
+        reason = practiceReasonText(num, num, total, title);
         return { ...s, topicTitle: title, reason, _mcqNum: num, totalPN: total };
       }
 
       if (s.activityType === 'learn') {
-        reason = s.isFirstSession
-          ? `First learning unit for ${title}`
-          : `Continuing learning for ${title}`;
+        learnCount[s.topicId] = (learnCount[s.topicId] || 0) + 1;
+        const num   = learnCount[s.topicId];
+        const total = stateMap[s.topicId]?.totalLN || 1;
+        reason = learnReasonText(num, num, total, title);
+        return { ...s, topicTitle: title, reason, _lnNum: num, totalLN: total };
       } else if (s.activityType === 'review') {
-        reason = `Spaced review of ${title} (interval ${s.reviewIndex !== undefined ? s.reviewIndex + 1 : '?'})`;
+        reason = `Spaced review of ${title} (revision ${s.reviewIndex !== undefined ? s.reviewIndex + 1 : '?'})`;
       }
 
       return { ...s, topicTitle: title, reason };
@@ -128,6 +129,7 @@ function mergeSessionsWithRanges(sessions) {
     if (s.topicTitle === cur.topicTitle && s.activityType === cur.activityType) {
       cur.count++;
       if (s.activityType === 'practice') cur._lastMcqNum = s._mcqNum;
+      if (s.activityType === 'learn')    cur._lastLnNum  = s._lnNum;
     } else {
       out.push(cur);
       cur = { ...s, count: 1 };
@@ -136,10 +138,12 @@ function mergeSessionsWithRanges(sessions) {
   out.push(cur);
   for (const block of out) {
     if (block.activityType === 'practice' && block.count > 1 && block._mcqNum != null) {
-      const first = block._mcqNum;
-      const last  = block._lastMcqNum ?? (first + block.count - 1);
-      const total = block.totalPN ?? '?';
-      block.reason = `Practice unit ${first}–${last} of ${total} for ${block.topicTitle}`;
+      const last  = block._lastMcqNum ?? (block._mcqNum + block.count - 1);
+      block.reason = practiceReasonText(block._mcqNum, last, block.totalPN ?? 1, block.topicTitle);
+    }
+    if (block.activityType === 'learn' && block.count > 1 && block._lnNum != null) {
+      const last  = block._lastLnNum ?? (block._lnNum + block.count - 1);
+      block.reason = learnReasonText(block._lnNum, last, block.totalLN ?? 1, block.topicTitle);
     }
   }
   return out;
@@ -3703,19 +3707,21 @@ window.StudyApp = {
         if (s.topicTitle === cur.topicTitle && s.activityType === cur.activityType) {
           cur.count++;
           if (s.activityType === 'practice') cur._lastMcqNum = s._mcqNum;
+          if (s.activityType === 'learn')    cur._lastLnNum  = s._lnNum;
         } else {
           out.push(cur);
           cur = { ...s, count: 1 };
         }
       }
       out.push(cur);
-      // Rewrite practice reason to show unit range when multiple were merged
       for (const block of out) {
         if (block.activityType === 'practice' && block.count > 1 && block._mcqNum != null) {
-          const first = block._mcqNum;
-          const last  = block._lastMcqNum ?? (first + block.count - 1);
-          const total = block.totalPN ?? '?';
-          block.reason = `Practice unit ${first}–${last} of ${total} for ${block.topicTitle}`;
+          const last = block._lastMcqNum ?? (block._mcqNum + block.count - 1);
+          block.reason = practiceReasonText(block._mcqNum, last, block.totalPN ?? 1, block.topicTitle);
+        }
+        if (block.activityType === 'learn' && block.count > 1 && block._lnNum != null) {
+          const last = block._lastLnNum ?? (block._lnNum + block.count - 1);
+          block.reason = learnReasonText(block._lnNum, last, block.totalLN ?? 1, block.topicTitle);
         }
       }
       return out;

@@ -150,6 +150,7 @@
         startingState:           topic.startingState,
         remainingLN,
         remainingPN,
+        totalLN:                 LN,
         totalPN:                 PN,
         mcqSessionsDone,
         reviewSessionsCompleted: 0,
