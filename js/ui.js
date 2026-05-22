@@ -4714,17 +4714,23 @@ window.StudyApp = {
           // (done or skip). Days with no status entries are "limbo" days from a prior
           // recalculation — the new plan will reschedule them, so including them here
           // would create duplicates.
+          // Exception: always preserve today when rescheduling starts from tomorrow —
+          // the user chose to keep today's plan intact, even if sessions are unmarked.
           const toDk = d => d.date instanceof Date ? d.date.toISOString().slice(0,10) : String(d.date).slice(0,10);
           const pastHydrated = this.hydratedCalendar.filter(d => {
             const dk = toDk(d);
             if (dk >= effectiveStartDate) return false;
+            if (dk === this.todayKey) return true;   // always keep today when start is tomorrow
             const merged = this.mergeSessions(d.sessions || []);
             return merged.some(b => this.completionStatus[this.sessionKey(dk, b)] !== undefined);
           });
 
-          // Lock all preserved past days — their statuses are now permanent
+          // Lock preserved past days — but not today, so the user can still mark sessions
           const newLocks = {};
-          for (const d of pastHydrated) newLocks[toDk(d)] = true;
+          for (const d of pastHydrated) {
+            const dk = toDk(d);
+            if (dk < this.todayKey) newLocks[dk] = true;
+          }
           this.lockedDays = { ...this.lockedDays, ...newLocks };
 
           const result = StudyPlanner.generatePlan(config);
