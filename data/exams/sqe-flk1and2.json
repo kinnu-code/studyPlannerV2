@@ -5,6 +5,7 @@
   "studyHoursNeeded": "440",
   "settings": {
     "mockDuration":            90,
+    "sessionDefault":          20,
     "learningMode":            "sequential",
     "maxNewTopicsPerDay":      4,
     "postMockSameDay":         false,

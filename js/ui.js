@@ -669,10 +669,10 @@ window.StudyApp = {
           <div class="section-title">Study Schedule</div>
           <hr>
           <!-- Plan Summary Bar (step 3) -->
-          <div v-if="calculatedStudyHours !== null || topics.filter(t => !t.isGroup).length > 0" class="plan-stats-bar" style="margin-bottom:8px">
+          <div v-if="studyTimeCalculated !== null || topics.filter(t => !t.isGroup).length > 0" class="plan-stats-bar" style="margin-bottom:8px">
             <div class="plan-stat plan-stat--highlight"
                  :class="planFits === true ? 'plan-stat--green' : planFits === false ? 'plan-stat--red' : ''">
-              <span class="plan-stat-value">~{{ allocatedStudyHours ?? 0 }}h / ~{{ calculatedStudyHours ?? 0 }}h</span>
+              <span class="plan-stat-value">~{{ Math.round((allocatedTime ?? 0) / 60) }}h / ~{{ Math.round((studyTimeCalculated ?? 0) / 60) }}h</span>
               <span class="plan-stat-label">study time allocated</span>
             </div>
             <div class="plan-stat" v-if="recommendedAvailableDays > 0">
@@ -896,8 +896,8 @@ window.StudyApp = {
         <!-- Tracking stats bar (amounts left) -->
         <div class="plan-stats-bar" style="margin-bottom:8px">
           <div class="plan-stat plan-stat--highlight"
-               :class="(planFutureHours || 0) >= (studyTimeLeftHours || 0) ? 'plan-stat--green' : 'plan-stat--red'">
-            <span class="plan-stat-value">~{{ planFutureHours }}h / ~{{ studyTimeLeftHours }}h</span>
+               :class="(allocatedTimeLeft || 0) >= (studyTimeLeft || 0) ? 'plan-stat--green' : 'plan-stat--red'">
+            <span class="plan-stat-value">~{{ Math.round((allocatedTimeLeft ?? 0) / 60) }}h / ~{{ Math.round((studyTimeLeft ?? 0) / 60) }}h</span>
             <span class="plan-stat-label">study time left</span>
           </div>
           <div class="plan-stat">
@@ -934,7 +934,7 @@ window.StudyApp = {
           <div class="plan-stats-bar" style="margin-bottom:8px">
             <div class="plan-stat plan-stat--highlight"
                  :class="planResult.overflow.hasOverflow ? 'plan-stat--red' : 'plan-stat--green'">
-              <span class="plan-stat-value">~{{ planTotalHours }}h / ~{{ calculatedStudyHours ?? planTotalHours }}h</span>
+              <span class="plan-stat-value">~{{ Math.round((allocatedTime ?? 0) / 60) }}h / ~{{ Math.round((studyTimeCalculated ?? 0) / 60) }}h</span>
               <span class="plan-stat-label">study time in plan</span>
             </div>
             <div class="plan-stat">
@@ -1125,7 +1125,7 @@ window.StudyApp = {
               <!-- Total row -->
               <tr style="font-weight:600;border-top:2px solid var(--c-border)">
                 <td>Total</td>
-                <td>~{{ planTotalHours }}h</td>
+                <td>~{{ Math.round((studyTimeCalculated ?? 0) / 60) }}h</td>
                 <td></td>
               </tr>
             </tbody>
@@ -1710,10 +1710,10 @@ window.StudyApp = {
             <h3>Study Schedule</h3>
 
             <!-- Plan Summary Bar -->
-            <div v-if="calculatedStudyHours !== null || topics.filter(t => !t.isGroup).length > 0" class="plan-stats-bar" style="margin-bottom:8px">
+            <div v-if="studyTimeCalculated !== null || topics.filter(t => !t.isGroup).length > 0" class="plan-stats-bar" style="margin-bottom:8px">
               <div class="plan-stat plan-stat--highlight"
                    :class="planFits === true ? 'plan-stat--green' : planFits === false ? 'plan-stat--red' : ''">
-                <span class="plan-stat-value">~{{ allocatedStudyHours ?? 0 }}h / ~{{ calculatedStudyHours ?? 0 }}h</span>
+                <span class="plan-stat-value">~{{ Math.round((allocatedTime ?? 0) / 60) }}h / ~{{ Math.round((studyTimeCalculated ?? 0) / 60) }}h</span>
                 <span class="plan-stat-label">study time allocated</span>
               </div>
               <div class="plan-stat" v-if="recommendedAvailableDays > 0">
@@ -2308,10 +2308,6 @@ window.StudyApp = {
       const nTopics   = this.planResult.topics.length;
       const extraSess = ov.estimatedExtraSessionsPerWeek;
       let msg = '';
-      if (ov.sessionLengthInsufficient) {
-        const minLen = typeof StudyPlanner !== 'undefined' ? StudyPlanner.SESSION_MIN : 10;
-        msg += `Not enough daily study time: the computed unit length would be ~${ov.requiredSessionLength} min, but the minimum is ${minLen} min. Increase your daily study time to make the plan work. `;
-      }
       if (nMCQ > 0) {
         msg += `${nMCQ} of ${nTopics} topics will not complete all practice units before the exam. `;
       }
@@ -2360,26 +2356,39 @@ window.StudyApp = {
     },
 
     planTotalHours() {
+      const mins = this.studyTimeCalculated;
+      return mins != null ? Math.round(mins / 60) : null;
+    },
+
+    allocatedTime() {
+      if (!this.startDate || !this.examDate || typeof StudyPlanner === 'undefined') return null;
+      return StudyPlanner.countCalendarMinutes(
+        new Date(this.startDate + 'T00:00:00Z'),
+        new Date(this.examDate  + 'T00:00:00Z'),
+        this.firstWeek, this.lastWeekComputed, this.rampMode, this.breakDays || []
+      );
+    },
+
+    studyTimeEstimated() {
+      return this.recommendedStudyHours != null ? this.recommendedStudyHours * 60 : null;
+    },
+
+    studyTimeCalculated() {
+      if (this.planPreviewData?.studyTimeCalculated != null) return this.planPreviewData.studyTimeCalculated;
       if (!this.hydratedCalendar.length) return null;
-      const mockMins    = this.settings.mockDuration || 90;
-      const sessionMins = this.planResult?.sessionLength || 20;
-      let totalMins = 0;
+      let units = 0;
       for (const day of this.hydratedCalendar) {
-        for (const s of (day.sessions || [])) {
-          if (s.activityType === 'mock')          totalMins += mockMins;
-          else if (s.activityType !== 'postMock') totalMins += sessionMins;
+        if (day.blockedBy === 'mock' || day.blockedBy === 'postMock') {
+          units += day.totalSessions || 0;
+        } else {
+          for (const s of (day.sessions || [])) {
+            if (s.activityType === 'learn' || s.activityType === 'practice' || s.activityType === 'review') {
+              units++;
+            }
+          }
         }
       }
-      return Math.round(totalMins / 60);
-    },
-
-    allocatedStudyHours() {
-      const total = this.schedulePreviewData.reduce((s, w) => s + w.hours, 0);
-      return total > 0 ? Math.round(total) : null;
-    },
-
-    calculatedStudyHours() {
-      return this.computedSessionLengthPreview?.requiredHours ?? null;
+      return units * (this.unitLength || 20);
     },
 
     planFits() {
@@ -2425,21 +2434,16 @@ window.StudyApp = {
       return msg;
     },
 
-    planFutureHours() {
-      if (!this.hydratedCalendar.length) return null;
-      const today      = this.todayKey;
-      const mockMins   = (this.settings && this.settings.mockDuration) || 90;
-      const sessionMins = this.planResult?.sessionLength || 20;
-      let totalMins = 0;
-      for (const day of this.hydratedCalendar) {
-        const dk = day.date instanceof Date ? day.date.toISOString().slice(0, 10) : String(day.date);
-        if (dk < today) continue;
-        for (const s of (day.sessions || [])) {
-          if (s.activityType === 'mock')          totalMins += mockMins;
-          else if (s.activityType !== 'postMock') totalMins += sessionMins;
-        }
-      }
-      return Math.round(totalMins / 60);
+    allocatedTimeLeft() {
+      if (!this.examDate || !this.todayKey || typeof StudyPlanner === 'undefined') return null;
+      const today = new Date(this.todayKey + 'T00:00:00Z');
+      const exam  = new Date(this.examDate  + 'T00:00:00Z');
+      if (today >= exam) return 0;
+      return StudyPlanner.countCalendarMinutes(
+        today, exam,
+        this.firstWeek, this.lastWeekComputed, this.rampMode,
+        [...(this.breakDays || []), ...(this.trackedBlockedDays || [])]
+      );
     },
 
     daysLeft() {
@@ -2449,11 +2453,11 @@ window.StudyApp = {
       return Math.max(0, Math.floor((exam - today) / 86400000));
     },
 
-    studyTimeLeftHours() {
+    studyTimeLeft() {
       if (!this.hydratedCalendar.length || !this.trackingMode) return null;
-      const today      = this.todayKey;
-      const mockMins   = (this.settings && this.settings.mockDuration) || 90;
-      const sessionMins = this.planResult?.sessionLength || 20;
+      const today       = this.todayKey;
+      const mockMins    = (this.settings && this.settings.mockDuration) || 90;
+      const sessionMins = this.unitLength || 20;
       let totalMins = 0;
       for (const day of this.hydratedCalendar) {
         const dk = day.date instanceof Date ? day.date.toISOString().slice(0, 10) : String(day.date);
@@ -2465,7 +2469,7 @@ window.StudyApp = {
           else if (s.activityType !== 'postMock') totalMins += sessionMins;
         }
       }
-      return Math.round(totalMins / 60);
+      return totalMins;
     },
 
     topicsLeft() {
@@ -2821,7 +2825,7 @@ window.StudyApp = {
       if (screen === 'step1') {
         this.trackingMode = false;
         this.activePlanId = null;
-        this.unitLength   = 20;
+        this.unitLength   = this.settings?.sessionDefault || 20;
       }
       if (screen === 'planList') {
         this.loadSavedPlans();
@@ -3397,11 +3401,15 @@ window.StudyApp = {
     // an accurate session length, then stores the result in planPreviewData.
     // This is the single calculation point for all step-3 bar values.
     _runPlanPreview() {
-      if (typeof StudyPlanner === 'undefined' || !StudyPlanner.previewPlan) return;
+      if (typeof StudyPlanner === 'undefined' || !StudyPlanner.computeStudyUnits) return;
       if (!this.startDate || !this.examDate) { this.planPreviewData = null; return; }
 
       const leafTopics = this.topics.filter(t => !t.isGroup && t.enabled !== false);
       if (!leafTopics.length) { this.planPreviewData = null; return; }
+
+      const SESSION_MIN     = StudyPlanner.SESSION_MIN     || 10;
+      const SESSION_MAX     = StudyPlanner.SESSION_MAX     || 60;
+      const SESSION_DEFAULT = StudyPlanner.SESSION_DEFAULT || 20;
 
       const srIntervals = (this.settingsSrText || '')
         .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
@@ -3417,13 +3425,16 @@ window.StudyApp = {
             skipReviews: !doRevise,
           };
         }),
-        startDate:   new Date(this.startDate + 'T00:00:00Z'),
-        examDate:    new Date(this.examDate   + 'T00:00:00Z'),
-        firstWeek:   this.firstWeek,
-        lastWeek:    this.lastWeekComputed,
-        rampMode:    this.rampMode,
-        srIntervals: srIntervals.length ? srIntervals : [1, 6, 16, 45, 131],
-        blockedDays: this.breakDays || [],
+        startDate:       new Date(this.startDate + 'T00:00:00Z'),
+        examDate:        new Date(this.examDate   + 'T00:00:00Z'),
+        firstWeek:       this.firstWeek,
+        lastWeek:        this.lastWeekComputed,
+        rampMode:        this.rampMode,
+        srIntervals:     srIntervals.length ? srIntervals : [1, 6, 16, 45, 131],
+        blockedDays:     this.breakDays || [],
+        numMocks:        this.numMocks,
+        postMockSameDay: this.settings.postMockSameDay !== false,
+        fixedMockDates:  this._buildFixedMockDates(),
         settings: {
           lnTable:                this.settings.lnTable,
           pnTable:                this.settings.pnTable,
@@ -3431,42 +3442,47 @@ window.StudyApp = {
           maxNewTopicsPerDay:     this.settings.maxNewTopicsPerDay,
           maxDaysBetweenPractice: this.settings.maxDaysBetweenPractice || 7,
         },
-        forcedSessionLength: this.unitLength || null,
       };
 
-      // Mirror doGeneratePlan exactly: start at the computed T, search downward until
-      // LP fits or we hit SESSION_MIN. This guarantees step-3 and step-4 agree.
-      let r = StudyPlanner.previewPlan(base);
-      if (!r.lpFits) {
-        const minT = StudyPlanner.SESSION_MIN || 10;
-        for (let t = r.sessionLength - 1; t >= minT; t--) {
-          const candidate = StudyPlanner.previewPlan({ ...base, forcedSessionLength: t });
-          if (candidate.lpFits) { r = candidate; break; }
-          if (t === minT) r = candidate;
-        }
+      const allocMins = StudyPlanner.countCalendarMinutes(
+        base.startDate, base.examDate, base.firstWeek, base.lastWeek, base.rampMode, base.blockedDays
+      );
+
+      // Stage 1: extended simulation with SESSION_DEFAULT (T=20)
+      let units = StudyPlanner.computeStudyUnits({ ...base, sessionLength: SESSION_DEFAULT });
+
+      // Stage 2: derive unit length
+      let unitLen = units.studyUnitsCalculated > 0
+        ? Math.min(SESSION_MAX, Math.max(SESSION_MIN, Math.floor(allocMins / units.studyUnitsCalculated)))
+        : SESSION_DEFAULT;
+
+      if (unitLen < SESSION_MIN) {
+        // Re-run Stage 1 with T=SESSION_MIN for accurate overflow counts
+        units   = StudyPlanner.computeStudyUnits({ ...base, sessionLength: SESSION_MIN });
+        unitLen = SESSION_MIN;
       }
 
-      const MIN = StudyPlanner.SESSION_MIN || 10;
-      const totalTopics = leafTopics.length;
-      const totalSessionsNeeded = r.sessionCounts.total + r.overflow.totalMissingSessions;
-      const requiredHours = Math.round(totalSessionsNeeded * r.sessionLength / 60);
-      const allocatedHours = Math.round(r.totalMinutes / 60);
-      const extraHours = r.lpFits ? 0 : Math.max(0, requiredHours - allocatedHours);
+      // Run preview with derived T
+      const r = StudyPlanner.previewPlan({ ...base, forcedSessionLength: unitLen });
 
+      this.unitLength = unitLen;
+
+      const totalTopics = leafTopics.length;
       this.planPreviewData = {
-        sessionLength:   r.sessionLength,
-        insufficient:    !r.lpFits && r.sessionLength <= MIN,
-        rawT:            r.totalMinutes > 0 && r.totalWorkUnits > 0
-                           ? Math.round(r.totalMinutes / (r.totalWorkUnits * (StudyPlanner.OVERHEAD_FACTOR || 1.25)) * 10) / 10
-                           : 0,
-        totalWorkUnits:  r.totalWorkUnits,
-        requiredHours,
-        lpFits:          r.lpFits,
-        overflow:        r.overflow,
+        unitLength:           unitLen,
+        studyUnitsCalculated: units.studyUnitsCalculated,
+        studyTimeCalculated:  units.studyUnitsCalculated * unitLen,
+        allocatedMinutes:     allocMins,
+        allDoneByExamDate:    units.allDoneByExamDate,
+        lpFits:               r.lpFits,
+        overflow:             r.overflow,
         totalTopics,
-        learnComplete:   totalTopics - r.overflow.incompleteLearnTopics.length,
-        practiceComplete: totalTopics - r.overflow.incompleteMCQTopics.length,
-        extraHours,
+        learnComplete:        totalTopics - r.overflow.incompleteLearnTopics.length,
+        practiceComplete:     totalTopics - r.overflow.incompleteMCQTopics.length,
+        requiredHours:        Math.round(units.studyUnitsCalculated * unitLen / 60),
+        allocatedHours:       Math.round(allocMins / 60),
+        extraHours:           r.lpFits ? 0 : Math.max(0,
+                                Math.round(units.studyUnitsCalculated * unitLen / 60) - Math.round(allocMins / 60)),
       };
     },
 
@@ -3554,30 +3570,44 @@ window.StudyApp = {
 
     doGeneratePlan() {
       this.mockDateOverrides = {};
-      this.unitLength = 20;   // always recalculate from scratch; auto-adjust will find the right value
+      const SESSION_MIN     = StudyPlanner.SESSION_MIN     || 10;
+      const SESSION_MAX     = StudyPlanner.SESSION_MAX     || 60;
+      const SESSION_DEFAULT = this.settings?.sessionDefault || StudyPlanner.SESSION_DEFAULT || 20;
+      this.unitLength = SESSION_DEFAULT;
       this.loading    = true;
       this.loadingMsg = 'Building your study plan…';
       this.error      = null;
-      // Assign a plan ID if this is a fresh generation (not a recalculation in tracking mode)
       if (!this.activePlanId) this.activePlanId = StudyStorage.createPlanId();
 
       setTimeout(() => {
         try {
-          let result = StudyPlanner.generatePlan(this._planConfig());
-          // Auto-adjust unit length downward if the plan overflows
-          if (result.overflow.hasOverflow) {
-            const minT = typeof StudyPlanner !== 'undefined' ? StudyPlanner.SESSION_MIN : 10;
-            const startT = result.sessionLength - 1;
-            for (let t = startT; t >= minT; t--) {
-              const candidate = StudyPlanner.generatePlan({ ...this._planConfig(), forcedSessionLength: t });
-              if (!candidate.overflow.hasOverflow) {
-                this.unitLength = t;
-                result = candidate;
-                break;
-              }
-              if (t === minT) result = candidate; // apply min-T result even if still overflow
-            }
+          const allocMins = StudyPlanner.countCalendarMinutes(
+            new Date(this.startDate + 'T00:00:00Z'),
+            new Date(this.examDate  + 'T00:00:00Z'),
+            this.firstWeek, this.lastWeekComputed, this.rampMode, this.breakDays || []
+          );
+
+          // Stage 1: extended simulation with SESSION_DEFAULT
+          let units = StudyPlanner.computeStudyUnits({
+            ...this._planConfig(),
+            sessionLength: SESSION_DEFAULT,
+          });
+
+          // Stage 2: derive T
+          let derivedT = units.studyUnitsCalculated > 0
+            ? Math.min(SESSION_MAX, Math.max(SESSION_MIN,
+                Math.floor(allocMins / units.studyUnitsCalculated)))
+            : SESSION_DEFAULT;
+
+          if (derivedT < SESSION_MIN) {
+            // Re-run Stage 1 with T=SESSION_MIN for accurate overflow
+            units    = StudyPlanner.computeStudyUnits({ ...this._planConfig(), sessionLength: SESSION_MIN });
+            derivedT = SESSION_MIN;
           }
+
+          this.unitLength = derivedT;
+          const result = StudyPlanner.generatePlan({ ...this._planConfig(), forcedSessionLength: derivedT });
+
           this._applyPlanResult(result);
           this.activeTab = 'calendar';
           this.navigate('step4');
@@ -3663,13 +3693,6 @@ window.StudyApp = {
           if (result.overflow.hasOverflow) {
             const { overflow, sessionStats, sessionLength } = result;
             let factor = 1;
-
-            // Session-length overflow: need more total minutes so T ≥ SESSION_MIN
-            if (overflow.sessionLengthInsufficient && overflow.requiredSessionLength > 0) {
-              const rawT    = overflow.requiredSessionLength;
-              const minT    = StudyPlanner.SESSION_MIN;
-              factor = Math.max(factor, (minT / rawT) * 1.05);
-            }
 
             // Topic overflow: need more sessions
             if ((overflow.incompleteLearnTopics.length > 0 || overflow.incompleteMCQTopics.length > 0) &&

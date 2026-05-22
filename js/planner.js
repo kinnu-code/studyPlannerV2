@@ -70,13 +70,6 @@
     return units;
   }
 
-  // Returns session length in minutes, clamped to [minLen, maxLen], floored to integer minutes.
-  function computeOptimalSessionLength(totalMinutes, totalUnits, overheadFactor, minLen, maxLen) {
-    if (totalUnits === 0 || totalMinutes === 0) return maxLen;
-    const raw = totalMinutes / (totalUnits * overheadFactor);
-    return Math.min(maxLen, Math.max(minLen, Math.floor(raw)));
-  }
-
   function countSessionTypes(calendar) {
     let learn = 0, practice = 0, review = 0;
     for (const day of calendar) {
@@ -542,10 +535,101 @@
     };
   }
 
+  // ─── computeStudyUnits ─────────────────────────────────────────────────────
+  // Stage 1 of the time-calculation redesign.
+  // Runs an extended forward simulation (past examDate if needed) and returns
+  // the total session-units required to complete the full plan.
+
+  function computeStudyUnits(config) {
+    const {
+      topics,
+      startDate,
+      examDate,
+      firstWeek,
+      lastWeek,
+      rampMode        = 'linear',
+      settings        = {},
+      blockedDays     = [],
+      numMocks        = 0,
+      postMockSameDay = true,
+      fixedMockDates  = null,
+      srIntervals     = [1, 6, 16, 45, 131],
+      sessionLength   = SESSION_DEFAULT,
+      maxExtraDays    = 365,
+    } = config;
+
+    const mergedSettings = {
+      lnTable:                { easy: 1, medium: 2, hard: 3 },
+      pnTable:                { easy: 3, medium: 4, hard: 5 },
+      maxNewTopicsPerDay:     4,
+      maxDaysBetweenPractice: 7,
+      ...settings,
+    };
+
+    // Main calendar: startDate → examDate
+    const mainCal = buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode, sessionLength, blockedDays);
+
+    // Extended calendar: examDate → examDate + maxExtraDays (flat pace, lastWeek schedule)
+    const extWeek = Object.values(lastWeek || {}).some(v => v > 0) ? lastWeek : firstWeek;
+    const extEnd  = addDays(examDate, maxExtraDays);
+    const extCal  = buildCalendar(examDate, extEnd, extWeek, extWeek, 'linear', sessionLength, []);
+
+    const combinedCal = [...mainCal, ...extCal];
+    const topicStates = initTopics(topics, mergedSettings);
+
+    // Place mocks — anchors at examDate-3 days, so all land in the main portion
+    if (numMocks > 0) {
+      placeMocks(combinedCal, null, numMocks, postMockSameDay, fixedMockDates, examDate);
+    }
+
+    // Single forward simulation across the full combined calendar
+    runPass2(combinedCal, topicStates, srIntervals, mergedSettings, startDate);
+
+    // Stopping point: last day with any learn or practice session
+    let stoppingIdx = -1;
+    for (let i = 0; i < combinedCal.length; i++) {
+      if (combinedCal[i].sessions.some(s => s.activityType === 'learn' || s.activityType === 'practice')) {
+        stoppingIdx = i;
+      }
+    }
+    // Fallback: all topics already in Reviewing state — use last main-calendar day
+    if (stoppingIdx === -1) stoppingIdx = Math.max(0, mainCal.length - 1);
+
+    const stoppingDate      = combinedCal[stoppingIdx].date;
+    const allDoneByExamDate = dateKey(stoppingDate) <= dateKey(examDate);
+    const extendedDaysNeeded = allDoneByExamDate ? 0
+      : Math.ceil(daysBetween(examDate, stoppingDate));
+
+    // Count session-units up to and including stoppingIdx.
+    // Mock/postMock days: cost = totalSessions (full-day capacity they displace).
+    // Regular days: count learn + practice + review sessions.
+    let regularSessions = 0;
+    let blockedDayUnits = 0;
+    for (let i = 0; i <= stoppingIdx; i++) {
+      const day = combinedCal[i];
+      if (day.blockedBy === 'mock' || day.blockedBy === 'postMock') {
+        blockedDayUnits += day.totalSessions || 0;
+      } else {
+        for (const s of day.sessions) {
+          if (s.activityType === 'learn' || s.activityType === 'practice' || s.activityType === 'review') {
+            regularSessions++;
+          }
+        }
+      }
+    }
+
+    return {
+      studyUnitsCalculated: regularSessions + blockedDayUnits,
+      allDoneByExamDate,
+      extendedDaysNeeded,
+      regularSessions,
+      blockedDayUnits,
+    };
+  }
+
   // ─── generatePlan ──────────────────────────────────────────────────────────
 
-  // Constants for the session-length optimiser
-  const OVERHEAD_FACTOR = 1.25;  // estimated review overhead on top of LN+PN
+  const SESSION_DEFAULT = 20;    // initial unit length; overridden per-exam via settings.sessionDefault
   const SESSION_MIN     = 10;    // minimum allowed session length (minutes)
   const SESSION_MAX     = 60;    // maximum allowed session length (minutes)
 
@@ -574,14 +658,12 @@
       ...settings,
     };
 
-    // 0. Compute optimal session length from available time and workload
+    // 0. Session length comes from Stage 2 caller; fall back to SESSION_DEFAULT
     const totalMinutes   = countCalendarMinutes(startDate, examDate, firstWeek, lastWeek, rampMode, blockedDays);
     const totalWorkUnits = computeTotalWorkUnits(topics, mergedSettings);
-    const rawT           = totalWorkUnits > 0 ? totalMinutes / (totalWorkUnits * OVERHEAD_FACTOR) : SESSION_MAX;
     const sessionLength  = forcedSessionLength != null
       ? Math.min(SESSION_MAX, Math.max(SESSION_MIN, Math.round(forcedSessionLength)))
-      : computeOptimalSessionLength(totalMinutes, totalWorkUnits, OVERHEAD_FACTOR, SESSION_MIN, SESSION_MAX);
-    const sessionLengthInsufficient = !forcedSessionLength && rawT < SESSION_MIN;
+      : SESSION_DEFAULT;
 
     // 1. Build the session calendar (sessions/day = floor(dailyMins / sessionLength))
     const calendar    = buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode, sessionLength, blockedDays);
@@ -637,18 +719,11 @@
     overflow.placedMockCount = placedMockCount;
     if (mockShortfall > 0) overflow.hasOverflow = true;
 
-    // 7. Annotate with session-length diagnostics
-    overflow.sessionLengthInsufficient = sessionLengthInsufficient;
-    overflow.requiredSessionLength     = totalWorkUnits > 0
-      ? Math.round(rawT * 10) / 10
-      : 0;
-    if (sessionLengthInsufficient) overflow.hasOverflow = true;
-
-    // 8. Session-type counts for overhead-factor calibration
+    // 7. Session-type counts for overhead-factor calibration
     const sessionCounts = countSessionTypes(calendar);
     const actualOverheadFactor = totalWorkUnits > 0
       ? Math.round((sessionCounts.total / totalWorkUnits) * 100) / 100
-      : OVERHEAD_FACTOR;
+      : 1.0;
 
     return {
       calendar,
@@ -686,7 +761,7 @@
 
     const sessionLength = forcedSessionLength != null
       ? Math.min(SESSION_MAX, Math.max(SESSION_MIN, Math.round(forcedSessionLength)))
-      : computeOptimalSessionLength(totalMinutes, totalWorkUnits, OVERHEAD_FACTOR, SESSION_MIN, SESSION_MAX);
+      : SESSION_DEFAULT;
 
     const calendar    = buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode, sessionLength, blockedDays);
     const topicStates = initTopics(topics, mergedSettings);
@@ -716,8 +791,8 @@
     interpolateSessions,
     computeTotalWorkUnits,
     countCalendarMinutes,
-    computeOptimalSessionLength,
-    OVERHEAD_FACTOR,
+    computeStudyUnits,
+    SESSION_DEFAULT,
     SESSION_MIN,
     SESSION_MAX,
   };
