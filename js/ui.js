@@ -829,7 +829,7 @@ window.StudyApp = {
     <!-- ════════════════ STEP 4 — Plan View ════════════════ -->
     <template v-else-if="!loading && screen === 'step4' && planResult">
 
-      <div class="stepper">
+      <div v-if="!trackingMode" class="stepper">
         <div class="step done"><div class="step-num">✓</div><span class="step-label">Exam Setup</span></div>
         <div class="step-connector"></div>
         <div class="step done"><div class="step-num">✓</div><span class="step-label">Topics Setup</span></div>
@@ -882,58 +882,19 @@ window.StudyApp = {
         </div>
       </div>
 
-      <!-- ── Tracking banner ── -->
-      <div v-if="trackingMode" class="tracking-banner">
-        <div class="tracking-banner-left">
-          <span class="tracking-badge">📊 Tracking</span>
-          <span class="tracking-today">Today: <strong>{{ todayKey }}</strong></span>
-          <span v-if="simulatedToday" class="tracking-simulated" @click="openDebugDialog()" style="cursor:pointer">⚠ Simulated date</span>
-        </div>
-        <div class="tracking-banner-right">
-          <button class="btn btn-secondary btn-sm" @click="navigate('planList')">← Plans</button>
-          <button class="btn btn-primary btn-sm" @click="doApplyAndUpdate()">↺ Apply & Update</button>
-        </div>
-      </div>
-
-      <!-- ── Manual mark reminder ── -->
-      <div v-if="manualMarkReminderVisible" class="manual-mark-reminder">
-        <span>⚠ Unmarked past sessions will be rescheduled when you click Apply & Update. Mark each activity Done or Skip before applying.</span>
-        <button class="btn btn-ghost btn-sm" style="margin-left:auto;flex-shrink:0" @click="manualMarkReminderVisible = false">Dismiss</button>
-      </div>
-
-      <!-- Plan page header -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <span class="section-title" style="margin:0">Your Study Plan</span>
-        <button class="btn btn-secondary btn-sm" style="background:#111;border-color:#111;color:#fff" @click="navigate('settings')">⚙ Edit Study Plan</button>
-      </div>
-
-      <!-- Plan stats bar -->
-      <template v-if="planTotalHours !== null">
-        <!-- Condition 1: not yet tracking -->
-        <div v-if="!trackingMode" class="plan-stats-bar" style="margin-bottom:8px">
-          <div class="plan-stat plan-stat--highlight"
-               :class="planResult.overflow.hasOverflow ? 'plan-stat--red' : 'plan-stat--green'">
-            <span class="plan-stat-value">~{{ planTotalHours }}h / ~{{ calculatedStudyHours ?? planTotalHours }}h</span>
-            <span class="plan-stat-label">study time in plan</span>
-          </div>
-          <div class="plan-stat">
-            <span class="plan-stat-value">{{ studyDaysWithSessions.length }}</span>
-            <span class="plan-stat-label">study days</span>
-          </div>
-          <div class="plan-stat">
-            <span class="plan-stat-value">{{ planResult.topics.length }}</span>
-            <span class="plan-stat-label">topics</span>
-          </div>
-          <div class="plan-stat" v-if="planResult.mocks.filter(m => m.type === 'mock').length > 0">
-            <span class="plan-stat-value">{{ planResult.mocks.filter(m => m.type === 'mock').length }}</span>
-            <span class="plan-stat-label">mock exams</span>
+      <!-- ── TRACKING MODE header ── -->
+      <template v-if="trackingMode">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <h2 style="margin:0;font-size:1.6rem;font-weight:700">Your Study Plan</h2>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span v-if="simulatedToday" class="tracking-simulated" @click="openDebugDialog()" style="cursor:pointer;font-size:.8rem">⚠ Simulated date</span>
+            <button class="btn btn-secondary btn-sm" style="background:#111;border-color:#111;color:#fff" @click="navigate('settings')">⚙ Edit Study Plan</button>
           </div>
         </div>
-        <p v-if="planResultStatusText" class="plan-status-text"
-           :class="planResult.overflow.hasOverflow ? 'plan-status-text--red' : 'plan-status-text--green'"
-           style="margin-bottom:12px">{{ planResultStatusText }}</p>
-        <!-- Condition 2: tracking mode -->
-        <div v-else class="plan-stats-bar">
+        <hr style="margin:0 0 16px;border:none;border-top:1px solid var(--c-border)">
+        <div style="font-weight:600;font-size:1rem;margin-bottom:10px">Progress</div>
+        <!-- Tracking stats bar (amounts left) -->
+        <div class="plan-stats-bar" style="margin-bottom:8px">
           <div class="plan-stat plan-stat--highlight"
                :class="(planFutureHours || 0) >= (studyTimeLeftHours || 0) ? 'plan-stat--green' : 'plan-stat--red'">
             <span class="plan-stat-value">~{{ planFutureHours }}h / ~{{ studyTimeLeftHours }}h</span>
@@ -952,6 +913,47 @@ window.StudyApp = {
             <span class="plan-stat-label">mock exams left</span>
           </div>
         </div>
+        <!-- Status text -->
+        <p v-if="planResultStatusText" class="plan-status-text"
+           :class="planResult.overflow.hasOverflow ? 'plan-status-text--red' : 'plan-status-text--green'"
+           style="margin-bottom:12px">{{ planResultStatusText }}</p>
+        <!-- Dismissable warning -->
+        <div v-if="manualMarkReminderVisible" class="manual-mark-reminder">
+          <span>⚠ Unmarked past sessions will be rescheduled when you click Apply & Update. Mark each activity Done or Skip before applying.</span>
+          <button class="btn btn-ghost btn-sm" style="margin-left:auto;flex-shrink:0" @click="manualMarkReminderVisible = false">Dismiss</button>
+        </div>
+      </template>
+
+      <!-- ── NON-TRACKING MODE header ── -->
+      <template v-else>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <span class="section-title" style="margin:0">Your Study Plan</span>
+          <button class="btn btn-secondary btn-sm" style="background:#111;border-color:#111;color:#fff" @click="navigate('settings')">⚙ Edit Study Plan</button>
+        </div>
+        <template v-if="planTotalHours !== null">
+          <div class="plan-stats-bar" style="margin-bottom:8px">
+            <div class="plan-stat plan-stat--highlight"
+                 :class="planResult.overflow.hasOverflow ? 'plan-stat--red' : 'plan-stat--green'">
+              <span class="plan-stat-value">~{{ planTotalHours }}h / ~{{ calculatedStudyHours ?? planTotalHours }}h</span>
+              <span class="plan-stat-label">study time in plan</span>
+            </div>
+            <div class="plan-stat">
+              <span class="plan-stat-value">{{ studyDaysWithSessions.length }}</span>
+              <span class="plan-stat-label">study days</span>
+            </div>
+            <div class="plan-stat">
+              <span class="plan-stat-value">{{ planResult.topics.length }}</span>
+              <span class="plan-stat-label">topics</span>
+            </div>
+            <div class="plan-stat" v-if="planResult.mocks.filter(m => m.type === 'mock').length > 0">
+              <span class="plan-stat-value">{{ planResult.mocks.filter(m => m.type === 'mock').length }}</span>
+              <span class="plan-stat-label">mock exams</span>
+            </div>
+          </div>
+          <p v-if="planResultStatusText" class="plan-status-text"
+             :class="planResult.overflow.hasOverflow ? 'plan-status-text--red' : 'plan-status-text--green'"
+             style="margin-bottom:12px">{{ planResultStatusText }}</p>
+        </template>
       </template>
 
       <!-- Tabs -->
