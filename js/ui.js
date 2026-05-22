@@ -744,9 +744,9 @@ window.StudyApp = {
                     <span class="sched-day-col">{{ dow.label.slice(0,3) }}</span>
                     <div class="sched-ctrl-col">
                       <div class="sg-time-ctrl">
-                        <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 20)" :disabled="firstWeek[dow.key] === 0">−</button>
+                        <button class="sg-step-btn" @click="adjustDay(dow.key, -20)" :disabled="firstWeek[dow.key] === 0">−</button>
                         <span class="sg-time-val">{{ fmtMins(firstWeek[dow.key]) }}</span>
-                        <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(720, firstWeek[dow.key] + 20)">+</button>
+                        <button class="sg-step-btn" @click="adjustDay(dow.key, 20)">+</button>
                       </div>
                     </div>
                     <span class="sched-hint-col sg-sessions-hint">
@@ -1807,9 +1807,9 @@ window.StudyApp = {
                       <span class="sched-day-col">{{ dow.label.slice(0,3) }}</span>
                       <div class="sched-ctrl-col">
                         <div class="sg-time-ctrl">
-                          <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.max(0, firstWeek[dow.key] - 20)" :disabled="firstWeek[dow.key] === 0">−</button>
+                          <button class="sg-step-btn" @click="adjustDay(dow.key, -20)" :disabled="firstWeek[dow.key] === 0">−</button>
                           <span class="sg-time-val">{{ fmtMins(firstWeek[dow.key]) }}</span>
-                          <button class="sg-step-btn" @click="firstWeek[dow.key] = Math.min(720, firstWeek[dow.key] + 20)">+</button>
+                          <button class="sg-step-btn" @click="adjustDay(dow.key, 20)">+</button>
                         </div>
                       </div>
                       <span class="sched-hint-col sg-sessions-hint">
@@ -2876,10 +2876,10 @@ window.StudyApp = {
         this.settingsSnapshot = JSON.stringify(this.settings);
       }
       if (screen === 'step1') {
-        this.trackingMode    = false;
-        this.activePlanId    = null;
-        this.unitLength      = this.settings?.sessionDefault || 20;
-        this._autoScaleUsed  = false;
+        this.trackingMode           = false;
+        this.activePlanId           = null;
+        this.unitLength             = this.settings?.sessionDefault || 20;
+        this._hoursAutoScaleAllowed = true;
       }
       if (screen === 'planList') {
         this.loadSavedPlans();
@@ -3510,8 +3510,8 @@ window.StudyApp = {
         ? Math.floor(allocMins / units.studyUnitsCalculated)
         : SESSION_DEFAULT;
 
-      // If raw estimate is below SESSION_MIN, try to auto-scale daily hours (one-time only)
-      if (rawUnitLen < SESSION_MIN && !this._autoScaleUsed) {
+      // If hours are still in auto-scale mode and raw estimate is below minimum: scale up
+      if (rawUnitLen < SESSION_MIN && this._hoursAutoScaleAllowed) {
         const neededMins = units.studyUnitsCalculated * SESSION_MIN;
         if (neededMins > allocMins && allocMins > 0) {
           const scale = neededMins / allocMins;
@@ -3524,16 +3524,17 @@ window.StudyApp = {
             dow => scaledFirst[dow] > (this.firstWeek[dow] || 0)
           );
           if (canScale) {
-            this._autoScaleUsed = true;
+            this._hoursAutoScaleAllowed = false; // lock hours after this one adjustment
             this.firstWeek = scaledFirst;
             return; // Vue watcher re-triggers _runPlanPreview with new allocation
           }
         }
       }
 
-      // Cap at SESSION_DEFAULT — unit length should never exceed the default (20 min)
-      // Using a longer T reduces per-day slots and causes spurious overflow
-      let unitLen = Math.min(SESSION_DEFAULT, Math.max(SESSION_MIN, rawUnitLen));
+      // During initial auto-calc, cap at SESSION_DEFAULT (20) to avoid per-day floor issues.
+      // Once the user has manually set hours (_hoursAutoScaleAllowed=false), allow up to SESSION_MAX (60).
+      const maxUnitLen = this._hoursAutoScaleAllowed ? SESSION_DEFAULT : SESSION_MAX;
+      let unitLen = Math.min(maxUnitLen, Math.max(SESSION_MIN, rawUnitLen));
 
       // Run initial preview
       let r = StudyPlanner.previewPlan({ ...base, forcedSessionLength: unitLen });
@@ -4115,7 +4116,13 @@ window.StudyApp = {
       return m > 0 ? `${h}h${m}` : `${h}h`;
     },
 
+    adjustDay(dow, delta) {
+      this._hoursAutoScaleAllowed = false;
+      this.firstWeek[dow] = Math.min(720, Math.max(0, (this.firstWeek[dow] || 0) + delta));
+    },
+
     adjustAllDays(delta) {
+      this._hoursAutoScaleAllowed = false;
       for (const dow of ['mon','tue','wed','thu','fri','sat','sun']) {
         if (this.firstWeek[dow] > 0) {
           this.firstWeek[dow] = Math.min(720, Math.max(0, this.firstWeek[dow] + delta));
@@ -4142,9 +4149,9 @@ window.StudyApp = {
         thu: weekdayMins, fri: weekdayMins,
         sat: weekendMins, sun: weekendMins,
       };
-      this.intensityMultiplier = 1;
-      this.recommendedHoursApplied = true;
-      this._autoScaleUsed = false;
+      this.intensityMultiplier      = 1;
+      this.recommendedHoursApplied  = true;
+      this._hoursAutoScaleAllowed   = true;
       this.$nextTick(() => this._runPlanPreview());
     },
 
@@ -4166,6 +4173,7 @@ window.StudyApp = {
     },
 
     adjustIntensity(delta) {
+      this._hoursAutoScaleAllowed = false;
       const val = Math.round((this.intensityMultiplier + delta) * 100) / 100;
       this.intensityMultiplier = Math.max(1, Math.min(8, val));
     },
@@ -5030,6 +5038,7 @@ window.StudyApp = {
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
 
   mounted() {
+    this._hoursAutoScaleAllowed = true;
     this.settingsSrText = (this.settings.srIntervals || [1,6,16,45,131]).join(', ');
 
     // Parse ?exam= URL parameter to set entry mode
