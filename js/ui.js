@@ -1261,7 +1261,7 @@ window.StudyApp = {
               <!-- Tracking footer -->
               <div v-if="trackingMode" class="cal-detail-track-footer">
                 <div class="cal-detail-footer-left">
-                  <button v-if="trackingMode && calendarPopover.dateKey > todayKey"
+                  <button v-if="trackingMode && !lockedDays[calendarPopover.dateKey]"
                           class="btn btn-sm"
                           :class="isBlockedDay(calendarPopover.dateKey) ? 'btn-primary' : 'btn-secondary'"
                           @click="doSkipDayAndUpdate(calendarPopover.dateKey)">
