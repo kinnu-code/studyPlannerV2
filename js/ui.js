@@ -694,8 +694,18 @@ window.StudyApp = {
           </div>
           <p v-if="planPreviewStatusText" class="plan-status-text"
              :class="planFits === false ? 'plan-status-text--red' : 'plan-status-text--green'"
-             style="margin-bottom:8px">{{ planPreviewStatusText }}</p>
-          <p v-if="unitLengthDescriptor" style="margin:0 0 16px;font-size:.85rem;color:var(--c-muted)">{{ unitLengthDescriptor }}</p>
+             style="margin-bottom:16px">{{ planPreviewStatusText }}</p>
+          <div v-if="debugMode && planPreviewData" style="margin:-8px 0 16px;padding:6px 10px;background:var(--c-surface2,#1e1e2e);border-radius:6px;font-size:.78rem;color:var(--c-muted);font-family:monospace;line-height:1.8">
+            <strong style="color:var(--c-fg)">⚙ Time calc debug</strong><br>
+            unitLength = {{ planPreviewData.unitLength }}min
+            &nbsp;|&nbsp; allocatedMins = {{ planPreviewData.allocatedMinutes }}
+            ({{ Math.round(planPreviewData.allocatedMinutes / 60) }}h)
+            &nbsp;|&nbsp; studyUnits = {{ planPreviewData.studyUnitsCalculated }}
+            &nbsp;|&nbsp; neededMins = {{ planPreviewData.studyUnitsCalculated * planPreviewData.unitLength }}
+            ({{ Math.round(planPreviewData.studyUnitsCalculated * planPreviewData.unitLength / 60) }}h)
+            &nbsp;|&nbsp; allDoneByExam = {{ planPreviewData.allDoneByExamDate }}
+            &nbsp;|&nbsp; lpFits = {{ planPreviewData.lpFits }}
+          </div>
 
           <!-- Break days -->
           <div class="form-group">
@@ -925,8 +935,7 @@ window.StudyApp = {
         <!-- Status text -->
         <p v-if="planResultStatusText" class="plan-status-text"
            :class="planResult.overflow.hasOverflow ? 'plan-status-text--red' : 'plan-status-text--green'"
-           style="margin-bottom:8px">{{ planResultStatusText }}</p>
-        <p v-if="unitLengthDescriptor" style="margin:0 0 12px;font-size:.85rem;color:var(--c-muted)">{{ unitLengthDescriptor }}</p>
+           style="margin-bottom:12px">{{ planResultStatusText }}</p>
         <!-- Dismissable warning -->
         <div v-if="manualMarkReminderVisible" class="manual-mark-reminder">
           <span>⚠ Unmarked past sessions will be rescheduled when you click Apply & Update. Mark each activity Done or Skip before applying.</span>
@@ -966,8 +975,7 @@ window.StudyApp = {
           </div>
           <p v-if="planResultStatusText" class="plan-status-text"
              :class="planResult.overflow.hasOverflow ? 'plan-status-text--red' : 'plan-status-text--green'"
-             style="margin-bottom:8px">{{ planResultStatusText }}</p>
-          <p v-if="unitLengthDescriptor" style="margin:0 0 12px;font-size:.85rem;color:var(--c-muted)">{{ unitLengthDescriptor }}</p>
+             style="margin-bottom:12px">{{ planResultStatusText }}</p>
         </template>
       </template>
 
@@ -1750,8 +1758,18 @@ window.StudyApp = {
             </div>
             <p v-if="planPreviewStatusText" class="plan-status-text"
                :class="planFits === false ? 'plan-status-text--red' : 'plan-status-text--green'"
-               style="margin-bottom:8px">{{ planPreviewStatusText }}</p>
-            <p v-if="unitLengthDescriptor" style="margin:0 0 16px;font-size:.85rem;color:var(--c-muted)">{{ unitLengthDescriptor }}</p>
+               style="margin-bottom:16px">{{ planPreviewStatusText }}</p>
+            <div v-if="debugMode && planPreviewData" style="margin:-8px 0 16px;padding:6px 10px;background:var(--c-surface2,#1e1e2e);border-radius:6px;font-size:.78rem;color:var(--c-muted);font-family:monospace;line-height:1.8">
+              <strong style="color:var(--c-fg)">⚙ Time calc debug</strong><br>
+              unitLength = {{ planPreviewData.unitLength }}min
+              &nbsp;|&nbsp; allocatedMins = {{ planPreviewData.allocatedMinutes }}
+              ({{ Math.round(planPreviewData.allocatedMinutes / 60) }}h)
+              &nbsp;|&nbsp; studyUnits = {{ planPreviewData.studyUnitsCalculated }}
+              &nbsp;|&nbsp; neededMins = {{ planPreviewData.studyUnitsCalculated * planPreviewData.unitLength }}
+              ({{ Math.round(planPreviewData.studyUnitsCalculated * planPreviewData.unitLength / 60) }}h)
+              &nbsp;|&nbsp; allDoneByExam = {{ planPreviewData.allDoneByExamDate }}
+              &nbsp;|&nbsp; lpFits = {{ planPreviewData.lpFits }}
+            </div>
 
             <!-- Break days -->
             <div class="form-group">
@@ -2429,6 +2447,7 @@ window.StudyApp = {
       if (!p.lpFits && p.extraHours > 0) {
         msg += ` You need ~${p.extraHours} more hour${p.extraHours !== 1 ? 's' : ''} to complete the full plan.`;
       }
+      if (this.unitLengthDescriptor) msg += ' ' + this.unitLengthDescriptor;
       return msg;
     },
 
@@ -2445,6 +2464,7 @@ window.StudyApp = {
         const extra = Math.ceil(ov.totalMissingSessions * this.planResult.sessionLength / 60);
         if (extra > 0) msg += ` You need ~${extra} more hour${extra !== 1 ? 's' : ''} to complete the full plan.`;
       }
+      if (this.unitLengthDescriptor) msg += ' ' + this.unitLengthDescriptor;
       return msg;
     },
 
@@ -3484,13 +3504,32 @@ window.StudyApp = {
       // Stage 1: extended simulation with SESSION_DEFAULT (T=20)
       let units = StudyPlanner.computeStudyUnits({ ...base, sessionLength: SESSION_DEFAULT });
 
-      // Stage 2: derive unit length
-      let unitLen = units.studyUnitsCalculated > 0
-        ? Math.min(SESSION_MAX, Math.max(SESSION_MIN, Math.floor(allocMins / units.studyUnitsCalculated)))
+      // Stage 2: derive unit length (check raw value before clamping)
+      const rawUnitLen = units.studyUnitsCalculated > 0
+        ? Math.floor(allocMins / units.studyUnitsCalculated)
         : SESSION_DEFAULT;
+      let unitLen = Math.min(SESSION_MAX, Math.max(SESSION_MIN, rawUnitLen));
 
-      if (unitLen < SESSION_MIN) {
-        // Re-run Stage 1 with T=SESSION_MIN for accurate overflow counts
+      if (rawUnitLen < SESSION_MIN) {
+        // Try to auto-scale daily hours to fit SESSION_MIN before showing overflow
+        const neededMins = units.studyUnitsCalculated * SESSION_MIN;
+        if (neededMins > allocMins && allocMins > 0) {
+          const scale = neededMins / allocMins;
+          const scaledFirst = {};
+          for (const dow of ['mon','tue','wed','thu','fri','sat','sun']) {
+            const cur = this.firstWeek[dow] || 0;
+            scaledFirst[dow] = cur > 0 ? Math.min(720, Math.ceil(cur * scale)) : 0;
+          }
+          // Check scaling is actually achievable (at least one day can grow)
+          const canScale = Object.keys(scaledFirst).some(
+            (dow) => scaledFirst[dow] > (this.firstWeek[dow] || 0)
+          );
+          if (canScale) {
+            this.firstWeek = scaledFirst;
+            return; // Vue watcher re-triggers _runPlanPreview with new allocation
+          }
+        }
+        // Can't scale (all days at cap or zero allocation): use SESSION_MIN with overflow
         units   = StudyPlanner.computeStudyUnits({ ...base, sessionLength: SESSION_MIN });
         unitLen = SESSION_MIN;
       }
@@ -3626,13 +3665,13 @@ window.StudyApp = {
             sessionLength: SESSION_DEFAULT,
           });
 
-          // Stage 2: derive T
-          let derivedT = units.studyUnitsCalculated > 0
-            ? Math.min(SESSION_MAX, Math.max(SESSION_MIN,
-                Math.floor(allocMins / units.studyUnitsCalculated)))
+          // Stage 2: derive T (check raw value before clamping)
+          const rawDerivedT = units.studyUnitsCalculated > 0
+            ? Math.floor(allocMins / units.studyUnitsCalculated)
             : SESSION_DEFAULT;
+          let derivedT = Math.min(SESSION_MAX, Math.max(SESSION_MIN, rawDerivedT));
 
-          if (derivedT < SESSION_MIN) {
+          if (rawDerivedT < SESSION_MIN) {
             // Re-run Stage 1 with T=SESSION_MIN for accurate overflow
             units    = StudyPlanner.computeStudyUnits({ ...this._planConfig(), sessionLength: SESSION_MIN });
             derivedT = SESSION_MIN;
