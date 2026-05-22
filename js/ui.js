@@ -697,7 +697,7 @@ window.StudyApp = {
              style="margin-bottom:16px">{{ planPreviewStatusText }}</p>
           <div v-if="debugMode && planPreviewData" style="margin:-8px 0 16px;padding:6px 10px;background:var(--c-surface2,#1e1e2e);border-radius:6px;font-size:.78rem;color:var(--c-muted);font-family:monospace;line-height:1.8">
             <strong style="color:var(--c-fg)">⚙ Time calc debug</strong><br>
-            unitLength = {{ planPreviewData.unitLength }}min
+            unitLength = {{ planPreviewData.unitLength }}min (raw = {{ planPreviewData.rawUnitLen }}min)
             &nbsp;|&nbsp; allocatedMins = {{ planPreviewData.allocatedMinutes }}
             ({{ Math.round(planPreviewData.allocatedMinutes / 60) }}h)
             &nbsp;|&nbsp; studyUnits = {{ planPreviewData.studyUnitsCalculated }}
@@ -2854,9 +2854,9 @@ window.StudyApp = {
     unitLengthDescriptor() {
       const u = this.unitLength;
       if (!u) return '';
-      if (u >= 17) return 'Your schedule allows enough time to learn and practice topics thoroughly.';
-      if (u >= 14) return 'Your schedule is manageable, but some topics may need a more focused pace.';
-      if (u >= 10) return 'Your schedule is quite tight and may require rushing through learning and practice.';
+      if (u >= 17) return 'This pace per topic allows enough time to learn and practice topics thoroughly.';
+      if (u >= 14) return 'This pace per topic is manageable, but some topics may need a more focused approach.';
+      if (u >= 10) return 'This pace per topic is quite tight and may require rushing through learning and practice.';
       return '';
     },
   },
@@ -2876,9 +2876,10 @@ window.StudyApp = {
         this.settingsSnapshot = JSON.stringify(this.settings);
       }
       if (screen === 'step1') {
-        this.trackingMode = false;
-        this.activePlanId = null;
-        this.unitLength   = this.settings?.sessionDefault || 20;
+        this.trackingMode    = false;
+        this.activePlanId    = null;
+        this.unitLength      = this.settings?.sessionDefault || 20;
+        this._autoScaleUsed  = false;
       }
       if (screen === 'planList') {
         this.loadSavedPlans();
@@ -3504,14 +3505,13 @@ window.StudyApp = {
       // Stage 1: extended simulation with SESSION_DEFAULT (T=20)
       let units = StudyPlanner.computeStudyUnits({ ...base, sessionLength: SESSION_DEFAULT });
 
-      // Stage 2: derive unit length (check raw value before clamping)
+      // Stage 2: raw estimate — how many minutes per study unit the allocation allows
       const rawUnitLen = units.studyUnitsCalculated > 0
         ? Math.floor(allocMins / units.studyUnitsCalculated)
         : SESSION_DEFAULT;
-      let unitLen = Math.min(SESSION_MAX, Math.max(SESSION_MIN, rawUnitLen));
 
-      if (rawUnitLen < SESSION_MIN) {
-        // Try to auto-scale daily hours to fit SESSION_MIN before showing overflow
+      // If raw estimate is below SESSION_MIN, try to auto-scale daily hours (one-time only)
+      if (rawUnitLen < SESSION_MIN && !this._autoScaleUsed) {
         const neededMins = units.studyUnitsCalculated * SESSION_MIN;
         if (neededMins > allocMins && allocMins > 0) {
           const scale = neededMins / allocMins;
@@ -3520,28 +3520,38 @@ window.StudyApp = {
             const cur = this.firstWeek[dow] || 0;
             scaledFirst[dow] = cur > 0 ? Math.min(720, Math.ceil(cur * scale)) : 0;
           }
-          // Check scaling is actually achievable (at least one day can grow)
           const canScale = Object.keys(scaledFirst).some(
-            (dow) => scaledFirst[dow] > (this.firstWeek[dow] || 0)
+            dow => scaledFirst[dow] > (this.firstWeek[dow] || 0)
           );
           if (canScale) {
+            this._autoScaleUsed = true;
             this.firstWeek = scaledFirst;
             return; // Vue watcher re-triggers _runPlanPreview with new allocation
           }
         }
-        // Can't scale (all days at cap or zero allocation): use SESSION_MIN with overflow
-        units   = StudyPlanner.computeStudyUnits({ ...base, sessionLength: SESSION_MIN });
-        unitLen = SESSION_MIN;
       }
 
-      // Run preview with derived T
-      const r = StudyPlanner.previewPlan({ ...base, forcedSessionLength: unitLen });
+      // Cap at SESSION_DEFAULT — unit length should never exceed the default (20 min)
+      // Using a longer T reduces per-day slots and causes spurious overflow
+      let unitLen = Math.min(SESSION_DEFAULT, Math.max(SESSION_MIN, rawUnitLen));
+
+      // Run initial preview
+      let r = StudyPlanner.previewPlan({ ...base, forcedSessionLength: unitLen });
+
+      // If plan overflows, reduce unit length until it fits (or we hit SESSION_MIN)
+      if (!r.lpFits && unitLen > SESSION_MIN) {
+        for (let t = unitLen - 1; t >= SESSION_MIN; t--) {
+          const rt = StudyPlanner.previewPlan({ ...base, forcedSessionLength: t });
+          if (rt.lpFits) { unitLen = t; r = rt; break; }
+        }
+      }
 
       this.unitLength = unitLen;
 
       const totalTopics = leafTopics.length;
       this.planPreviewData = {
         unitLength:           unitLen,
+        rawUnitLen,
         studyUnitsCalculated: units.studyUnitsCalculated,
         studyTimeCalculated:  units.studyUnitsCalculated * unitLen,
         allocatedMinutes:     allocMins,
@@ -3665,17 +3675,11 @@ window.StudyApp = {
             sessionLength: SESSION_DEFAULT,
           });
 
-          // Stage 2: derive T (check raw value before clamping)
+          // Stage 2: derive T, capped at SESSION_DEFAULT (same logic as plan preview)
           const rawDerivedT = units.studyUnitsCalculated > 0
             ? Math.floor(allocMins / units.studyUnitsCalculated)
             : SESSION_DEFAULT;
-          let derivedT = Math.min(SESSION_MAX, Math.max(SESSION_MIN, rawDerivedT));
-
-          if (rawDerivedT < SESSION_MIN) {
-            // Re-run Stage 1 with T=SESSION_MIN for accurate overflow
-            units    = StudyPlanner.computeStudyUnits({ ...this._planConfig(), sessionLength: SESSION_MIN });
-            derivedT = SESSION_MIN;
-          }
+          let derivedT = Math.min(SESSION_DEFAULT, Math.max(SESSION_MIN, rawDerivedT));
 
           this.unitLength = derivedT;
           const result = StudyPlanner.generatePlan({ ...this._planConfig(), forcedSessionLength: derivedT });
@@ -4140,6 +4144,7 @@ window.StudyApp = {
       };
       this.intensityMultiplier = 1;
       this.recommendedHoursApplied = true;
+      this._autoScaleUsed = false;
       this.$nextTick(() => this._runPlanPreview());
     },
 
