@@ -703,8 +703,8 @@ window.StudyApp = {
             &nbsp;|&nbsp; studyUnits = {{ planPreviewData.studyUnitsCalculated }}
             &nbsp;|&nbsp; neededMins = {{ planPreviewData.studyUnitsCalculated * planPreviewData.unitLength }}
             ({{ Math.round(planPreviewData.studyUnitsCalculated * planPreviewData.unitLength / 60) }}h)
-            &nbsp;|&nbsp; allDoneByExam = {{ planPreviewData.allDoneByExamDate }}
-            &nbsp;|&nbsp; lpFits = {{ planPreviewData.lpFits }}
+            &nbsp;|&nbsp; allDoneByExam@T20 = {{ planPreviewData.allDoneByExamDate }}
+            &nbsp;|&nbsp; lpFits@T{{ planPreviewData.unitLength }} = {{ planPreviewData.lpFits }}
           </div>
 
           <!-- Break days -->
