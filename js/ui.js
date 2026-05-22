@@ -1104,7 +1104,6 @@ window.StudyApp = {
             <thead>
               <tr>
                 <th style="width:200px">Group / Topic</th>
-                <th style="width:110px">Units</th>
                 <th style="width:110px">Est. time</th>
                 <th>Learn start → last practice</th>
               </tr>
@@ -1115,8 +1114,7 @@ window.StudyApp = {
                   <strong>{{ grp.groupTitle }}</strong>
                   <span v-if="!grp.isGroup" style="font-size:.75rem;color:var(--c-muted);margin-left:4px">(standalone)</span>
                 </td>
-                <td>{{ grp.totalSessions }}</td>
-                <td>~{{ grp.totalMins }} min</td>
+                <td>~{{ fmtMins(grp.totalMins) }}</td>
                 <td style="font-size:.82rem;color:var(--c-muted)">
                   <span v-if="grp.firstLearnDate">{{ formatDate(grp.firstLearnDate) }}</span>
                   <span v-if="grp.firstLearnDate && grp.lastPracticeDate"> → </span>
@@ -1127,8 +1125,7 @@ window.StudyApp = {
               <!-- Total row -->
               <tr style="font-weight:600;border-top:2px solid var(--c-border)">
                 <td>Total</td>
-                <td>{{ collapsedTopicGroups.reduce((s, g) => s + g.totalSessions, 0) }}</td>
-                <td>~{{ planTotalHours }} h</td>
+                <td>~{{ planTotalHours }}h</td>
                 <td></td>
               </tr>
             </tbody>
@@ -1167,10 +1164,7 @@ window.StudyApp = {
                       <div class="activity-list">
                         <div class="activity-entry" :class="{ 'activity-entry--past': isPastDate(act.date) }" v-for="(act, ai) in ts.activities" :key="ai">
                           <span class="date">{{ formatDate(act.date) }}</span>
-                          <span class="type">
-                            <span class="activity-pill" :class="pillClass(act.activityType)">{{ activityLabel(act.activityType) }}</span>
-                            <span v-if="act.count > 1" style="margin-left:4px">× {{ act.count }}</span>
-                          </span>
+                          <span class="type"><span class="activity-pill" :class="pillClass(act.activityType)">{{ activityLabel(act.activityType) }}</span></span>
                           <span class="note">{{ act.reason }}</span>
                         </div>
                       </div>
@@ -1185,10 +1179,7 @@ window.StudyApp = {
                     <div class="activity-list">
                       <div class="activity-entry" :class="{ 'activity-entry--past': isPastDate(act.date) }" v-for="(act, ai) in item.summary.activities" :key="ai">
                         <span class="date">{{ formatDate(act.date) }}</span>
-                        <span class="type">
-                          <span class="activity-pill" :class="pillClass(act.activityType)">{{ activityLabel(act.activityType) }}</span>
-                          <span v-if="act.count > 1" style="margin-left:4px">× {{ act.count }}</span>
-                        </span>
+                        <span class="type"><span class="activity-pill" :class="pillClass(act.activityType)">{{ activityLabel(act.activityType) }}</span></span>
                         <span class="note">{{ act.reason }}</span>
                       </div>
                     </div>

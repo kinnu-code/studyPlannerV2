@@ -815,29 +815,25 @@ input[type=number] { width: auto; min-width: 80px; }
 .topic-summary-table tr.topic-group-header-row:hover td { background: #dbeafe; }
 .topic-summary-table tr.topic-subtopic-row td { background: #fafafa; }
 
-.activity-list { display: flex; flex-direction: column; gap: 3px; }
-.activity-entry {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+.activity-list {
+  display: grid;
+  grid-template-columns: 120px 100px 1fr;
+  gap: 4px 10px;
   font-size: .83rem;
+  align-items: baseline;
 }
-.activity-entry .date  { color: var(--c-muted); min-width: 80px; flex-shrink: 0; }
-.activity-entry .type  { font-weight: 500; min-width: 120px; flex-shrink: 0; }
+
+.activity-entry { display: contents; }
+
+.activity-entry .date  { color: var(--c-muted); }
+.activity-entry .type  { }
 .activity-entry .note  { color: var(--c-muted); }
 
-.activity-entry--past {
-  opacity: .5;
-}
+.activity-entry--past .date,
+.activity-entry--past .type,
+.activity-entry--past .note { opacity: .5; }
 
-.activity-entry--done {
-  text-decoration: line-through;
-}
-
-.activity-entry--past.activity-entry--done {
-  opacity: .5;
-  text-decoration: line-through;
-}
+.activity-entry--done .note { text-decoration: line-through; }
 
 /* ─── Chart container ──────────────────────────────────────────────────────── */
 
