@@ -736,9 +736,9 @@
   }
 
   // ─── previewPlan ───────────────────────────────────────────────────────────
-  // Lightweight single-pass version of generatePlan (no mock placement).
-  // Used by the study-schedule page to get exact session counts without the
-  // overhead of the iterative mock-convergence loop.
+  // Lightweight single-pass version of generatePlan.
+  // Estimates mock day overhead by pre-blocking the approximate number of study
+  // days that will be consumed by mock exams and post-mock reviews.
   function previewPlan(config) {
     const {
       topics, startDate, examDate,
@@ -746,6 +746,8 @@
       srIntervals = [1, 6, 16, 45, 131],
       settings = {}, blockedDays = [],
       forcedSessionLength = null,
+      numMocks = 0,
+      postMockSameDay = true,
     } = config;
 
     const mergedSettings = {
@@ -763,7 +765,26 @@
       ? Math.min(SESSION_MAX, Math.max(SESSION_MIN, Math.round(forcedSessionLength)))
       : SESSION_DEFAULT;
 
-    const calendar    = buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode, sessionLength, blockedDays);
+    // Build a draft calendar to identify which days will be blocked by mocks.
+    // We estimate by pre-blocking the last N study days before the exam, where N = mock days.
+    const mockDaysToBlock = numMocks > 0
+      ? numMocks * (postMockSameDay ? 1 : 2)
+      : 0;
+
+    const draftCalendar = buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode, sessionLength, blockedDays);
+    const studyDays = draftCalendar.filter(d => d.totalSessions > 0);
+
+    // Pick the last N study days (working backward) as estimated mock-blocked days
+    const estimatedMockDates = new Set(
+      studyDays.slice(-mockDaysToBlock).map(d => dateKey(d.date))
+    );
+
+    // Re-build calendar with estimated mock days treated as blocked
+    const allBlockedDays = estimatedMockDates.size > 0
+      ? [...blockedDays, ...estimatedMockDates]
+      : blockedDays;
+
+    const calendar    = buildCalendar(startDate, examDate, firstWeek, lastWeek, rampMode, sessionLength, allBlockedDays);
     const topicStates = initTopics(topics, mergedSettings);
     const pass        = runPass2(calendar, topicStates, srIntervals, mergedSettings, startDate);
     const overflow    = detectOverflow(calendar, pass.states, examDate);

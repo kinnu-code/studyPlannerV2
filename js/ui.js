@@ -688,8 +688,8 @@ window.StudyApp = {
               <span class="plan-stat-label">mock exams</span>
             </div>
             <div class="plan-stat" v-if="standardTopicMins">
-              <span class="plan-stat-value">{{ standardTopicMins.learn }}min / {{ standardTopicMins.practice }}min</span>
-              <span class="plan-stat-label">typical topic (learn / practice)</span>
+              <span class="plan-stat-value">{{ standardTopicMins.learn + standardTopicMins.practice }}min</span>
+              <span class="plan-stat-label">learning plus mcqs time for a topic with standard time allocation</span>
             </div>
           </div>
           <p v-if="planPreviewStatusText" class="plan-status-text"
@@ -897,87 +897,65 @@ window.StudyApp = {
         </div>
       </div>
 
-      <!-- ── TRACKING MODE header ── -->
-      <template v-if="trackingMode">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <h2 style="margin:0;font-size:1.6rem;font-weight:700">Your Study Plan</h2>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span v-if="simulatedToday" class="tracking-simulated" @click="openDebugDialog()" style="cursor:pointer;font-size:.8rem">⚠ Simulated date</span>
-            <button class="btn btn-secondary btn-sm" style="background:#111;border-color:#111;color:#fff" @click="navigate('settings')">⚙ Edit Study Plan</button>
-          </div>
-        </div>
-        <hr style="margin:0 0 16px;border:none;border-top:1px solid var(--c-border)">
-        <div style="font-weight:600;font-size:1rem;margin-bottom:10px">Progress</div>
-        <!-- Tracking stats bar (amounts left) -->
-        <div class="plan-stats-bar" style="margin-bottom:8px">
-          <div class="plan-stat plan-stat--highlight"
-               :class="(allocatedTimeLeft || 0) >= (studyTimeLeft || 0) ? 'plan-stat--green' : 'plan-stat--red'">
-            <span class="plan-stat-value">~{{ Math.round((allocatedTimeLeft ?? 0) / 60) }}h</span>
-            <span class="plan-stat-label">study time left</span>
-          </div>
-          <div class="plan-stat">
-            <span class="plan-stat-value">{{ daysLeft }}</span>
-            <span class="plan-stat-label">days left</span>
-          </div>
-          <div class="plan-stat">
-            <span class="plan-stat-value">{{ topicsLeft }}</span>
-            <span class="plan-stat-label">topics left</span>
-          </div>
-          <div class="plan-stat" v-if="planResult.mocks.filter(m => m.type === 'mock').length > 0">
-            <span class="plan-stat-value">{{ mocksLeft }}</span>
-            <span class="plan-stat-label">mock exams left</span>
-          </div>
-          <div class="plan-stat" v-if="standardTopicMins">
-            <span class="plan-stat-value">{{ standardTopicMins.learn }}min / {{ standardTopicMins.practice }}min</span>
-            <span class="plan-stat-label">typical topic (learn / practice)</span>
-          </div>
-        </div>
-        <!-- Status text -->
-        <p v-if="planResultStatusText" class="plan-status-text"
-           :class="planResult.overflow.hasOverflow ? 'plan-status-text--red' : 'plan-status-text--green'"
-           style="margin-bottom:12px">{{ planResultStatusText }}</p>
-        <!-- Dismissable warning -->
-        <div v-if="manualMarkReminderVisible" class="manual-mark-reminder">
-          <span>⚠ Unmarked past sessions will be rescheduled when you click Apply & Update. Mark each activity Done or Skip before applying.</span>
-          <button class="btn btn-ghost btn-sm" style="margin-left:auto;flex-shrink:0" @click="manualMarkReminderVisible = false">Dismiss</button>
-        </div>
-      </template>
-
-      <!-- ── NON-TRACKING MODE header ── -->
-      <template v-else>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <span class="section-title" style="margin:0">Your Study Plan</span>
+      <!-- ── Plan header ── -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0;font-size:1.6rem;font-weight:700">Your Study Plan</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span v-if="simulatedToday" class="tracking-simulated" @click="openDebugDialog()" style="cursor:pointer;font-size:.8rem">⚠ Simulated date</span>
           <button class="btn btn-secondary btn-sm" style="background:#111;border-color:#111;color:#fff" @click="navigate('settings')">⚙ Edit Study Plan</button>
         </div>
-        <template v-if="planTotalHours !== null">
-          <div class="plan-stats-bar" style="margin-bottom:8px">
-            <div class="plan-stat plan-stat--highlight"
-                 :class="planResult.overflow.hasOverflow ? 'plan-stat--red' : 'plan-stat--green'">
-              <span class="plan-stat-value">~{{ Math.round((allocatedTime ?? 0) / 60) }}h</span>
-              <span class="plan-stat-label">study time in plan</span>
-            </div>
-            <div class="plan-stat">
-              <span class="plan-stat-value">{{ studyDaysWithSessions.length }}</span>
-              <span class="plan-stat-label">study days</span>
-            </div>
-            <div class="plan-stat">
-              <span class="plan-stat-value">{{ planResult.topics.length }}</span>
-              <span class="plan-stat-label">topics</span>
-            </div>
-            <div class="plan-stat" v-if="planResult.mocks.filter(m => m.type === 'mock').length > 0">
-              <span class="plan-stat-value">{{ planResult.mocks.filter(m => m.type === 'mock').length }}</span>
-              <span class="plan-stat-label">mock exams</span>
-            </div>
-            <div class="plan-stat" v-if="standardTopicMins">
-              <span class="plan-stat-value">{{ standardTopicMins.learn }}min / {{ standardTopicMins.practice }}min</span>
-              <span class="plan-stat-label">typical topic (learn / practice)</span>
-            </div>
-          </div>
-          <p v-if="planResultStatusText" class="plan-status-text"
-             :class="planResult.overflow.hasOverflow ? 'plan-status-text--red' : 'plan-status-text--green'"
-             style="margin-bottom:12px">{{ planResultStatusText }}</p>
-        </template>
-      </template>
+      </div>
+      <hr style="margin:0 0 16px;border:none;border-top:1px solid var(--c-border)">
+      <!-- Stats bar -->
+      <div class="plan-stats-bar" style="margin-bottom:8px">
+        <div class="plan-stat plan-stat--highlight"
+             :class="(allocatedTimeLeft || 0) >= (studyTimeLeft || 0) ? 'plan-stat--green' : 'plan-stat--red'">
+          <span class="plan-stat-value">~{{ Math.round((allocatedTimeLeft ?? 0) / 60) }}h</span>
+          <span class="plan-stat-label">study time left</span>
+        </div>
+        <div class="plan-stat">
+          <span class="plan-stat-value">{{ daysLeft }}</span>
+          <span class="plan-stat-label">days left</span>
+        </div>
+        <div class="plan-stat">
+          <span class="plan-stat-value">{{ topicsLeft }}</span>
+          <span class="plan-stat-label">topics left</span>
+        </div>
+        <div class="plan-stat" v-if="planResult.mocks.filter(m => m.type === 'mock').length > 0">
+          <span class="plan-stat-value">{{ mocksLeft }}</span>
+          <span class="plan-stat-label">mock exams left</span>
+        </div>
+        <div class="plan-stat" v-if="standardTopicMins">
+          <span class="plan-stat-value">{{ standardTopicMins.learn + standardTopicMins.practice }}min</span>
+          <span class="plan-stat-label">learning plus mcqs time for a topic with standard time allocation</span>
+        </div>
+      </div>
+      <!-- Status text -->
+      <p v-if="planResultStatusText" class="plan-status-text"
+         :class="planResult.overflow.hasOverflow ? 'plan-status-text--red' : 'plan-status-text--green'"
+         style="margin-bottom:6px">{{ planResultStatusText }}</p>
+      <p v-if="planFitHint" class="plan-status-text plan-status-text--red"
+         style="margin-bottom:12px;font-size:.84rem">{{ planFitHint }}</p>
+      <!-- Debug bar -->
+      <div v-if="debugMode && planPreviewData" style="margin:-8px 0 16px;padding:6px 10px;background:var(--c-surface2,#1e1e2e);border-radius:6px;font-size:.78rem;color:var(--c-muted);font-family:monospace;line-height:1.8">
+        <strong style="color:var(--c-fg)">⚙ Time calc debug</strong><br>
+        unitLength = {{ planResult.sessionLength }}min (preview raw = {{ planPreviewData.rawUnitLen }}min)
+        &nbsp;|&nbsp; allocatedMins = {{ planPreviewData.allocatedMinutes }}
+        ({{ Math.round(planPreviewData.allocatedMinutes / 60) }}h)
+        &nbsp;|&nbsp; allocatedTimeLeft = {{ allocatedTimeLeft }}
+        ({{ Math.round((allocatedTimeLeft ?? 0) / 60) }}h)
+        &nbsp;|&nbsp; studyUnits = {{ planPreviewData.studyUnitsCalculated }}
+        &nbsp;|&nbsp; neededMins = {{ planPreviewData.studyUnitsCalculated * planResult.sessionLength }}
+        ({{ Math.round(planPreviewData.studyUnitsCalculated * planResult.sessionLength / 60) }}h)
+        &nbsp;|&nbsp; studyTimeLeft = {{ studyTimeLeft }}
+        ({{ Math.round((studyTimeLeft ?? 0) / 60) }}h)
+        &nbsp;|&nbsp; lpFits@T{{ planResult.sessionLength }} = {{ planPreviewData.lpFits }}
+      </div>
+      <!-- Dismissable warning -->
+      <div v-if="manualMarkReminderVisible" class="manual-mark-reminder">
+        <span>⚠ Unmarked past sessions will be rescheduled when you click Apply & Update. Mark each activity Done or Skip before applying.</span>
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto;flex-shrink:0" @click="manualMarkReminderVisible = false">Dismiss</button>
+      </div>
 
       <!-- Tabs -->
       <div class="tab-bar">
@@ -1059,7 +1037,7 @@ window.StudyApp = {
                 {{ item.sessions.length }} unit{{ item.sessions.length !== 1 ? 's' : '' }}
                 <span class="day-time-est" v-if="dayEstimatedTime(item)">· {{ dayEstimatedTime(item) }}</span>
               </span>
-              <button v-if="trackingMode" class="btn btn-ghost btn-sm day-block-btn"
+              <button class="btn btn-ghost btn-sm day-block-btn"
                       :class="{ 'day-block-btn--blocked': isBlockedDay(item.dateKey) }"
                       @click.stop="toggleBlockedDay(item.dateKey)"
                       :title="isBlockedDay(item.dateKey) ? 'Mark as studied' : 'Mark as not studied'">
@@ -1079,15 +1057,15 @@ window.StudyApp = {
                 <div v-for="(block, bi) in mergeSessions(item.sessions)" :key="bi"
                      class="session-row"
                      :class="{
-                       'session-row--done': trackingMode && isSessionDone(item.dateKey, block),
-                       'session-row--skip': trackingMode && isSessionSkipped(item.dateKey, block),
+                       'session-row--done': isSessionDone(item.dateKey, block),
+                       'session-row--skip': isSessionSkipped(item.dateKey, block),
                      }">
                   <span class="session-num">{{ bi + 1 }}</span>
                   <span class="activity-pill" :class="pillClass(block.activityType)">{{ activityLabel(block.activityType) }}</span>
                   <span class="session-topic">{{ block.topicTitle || (block.activityType === 'mock' ? 'Mock Exam' : 'Post-Mock Revision') }}</span>
                   <span class="session-reason">{{ block.reason }}</span>
                   <span class="session-track">
-                    <template v-if="trackingMode && item.dateKey <= todayKey">
+                    <template v-if="item.dateKey <= todayKey">
                       <template v-if="lockedDays[item.dateKey]">
                         <span class="track-locked-badge">🔒</span>
                       </template>
@@ -1262,7 +1240,7 @@ window.StudyApp = {
                     <span class="session-topic">{{ block.topicTitle || (block.activityType === 'mock' ? 'Mock Exam' : 'Post-Mock Revision') }}</span>
                     <span class="session-reason">{{ block.reason }}</span>
                     <span class="session-track">
-                      <template v-if="trackingMode && calendarPopover.dateKey <= todayKey">
+                      <template v-if="calendarPopover.dateKey <= todayKey">
                         <template v-if="lockedDays[calendarPopover.dateKey]">
                           <span class="track-locked-badge">🔒</span>
                         </template>
@@ -1281,10 +1259,10 @@ window.StudyApp = {
               </div>
               <div v-else class="cal-detail-empty">No sessions scheduled.</div>
 
-              <!-- Tracking footer -->
-              <div v-if="trackingMode" class="cal-detail-track-footer">
+              <!-- Footer -->
+              <div class="cal-detail-track-footer">
                 <div class="cal-detail-footer-left">
-                  <button v-if="trackingMode && !lockedDays[calendarPopover.dateKey]"
+                  <button v-if="!lockedDays[calendarPopover.dateKey]"
                           class="btn btn-sm"
                           :class="isBlockedDay(calendarPopover.dateKey) ? 'btn-primary' : 'btn-secondary'"
                           @click="doSkipDayAndUpdate(calendarPopover.dateKey)">
@@ -1292,7 +1270,7 @@ window.StudyApp = {
                   </button>
                 </div>
                 <span class="cal-detail-footer-hint">Mark activities then submit to reschedule.</span>
-                <button class="btn btn-primary btn-sm" @click="doApplyAndUpdate()">↺ Submit and update plan</button>
+                <button class="btn btn-primary btn-sm" :disabled="!hasPendingTracking" @click="doApplyAndUpdate()">↺ Submit and update plan</button>
               </div>
             </div>
           </div>
@@ -1752,8 +1730,8 @@ window.StudyApp = {
                 <span class="plan-stat-label">mock exams</span>
               </div>
               <div class="plan-stat" v-if="standardTopicMins">
-                <span class="plan-stat-value">{{ standardTopicMins.learn }}min / {{ standardTopicMins.practice }}min</span>
-                <span class="plan-stat-label">typical topic (learn / practice)</span>
+                <span class="plan-stat-value">{{ standardTopicMins.learn + standardTopicMins.practice }}min</span>
+                <span class="plan-stat-label">learning plus mcqs time for a topic with standard time allocation</span>
               </div>
             </div>
             <p v-if="planPreviewStatusText" class="plan-status-text"
@@ -2116,6 +2094,7 @@ window.StudyApp = {
       activeTab:        'calendar',
       completionStatus: {},
       lockedDays: {},
+      planFitHint: null,
       autoMarkPromptVisible: false,
       manualMarkReminderVisible: false,
       rescheduleFromPromptVisible: false,
@@ -2311,7 +2290,7 @@ window.StudyApp = {
         step1:    'New Plan — Step 1: Exam Setup',
         step2:    'New Plan — Step 2: Topics Setup',
         step3:    'New Plan — Step 3: Study Schedule',
-        step4:    this.trackingMode ? 'Tracking Plan' : 'Your Study Plan',
+        step4:    'Your Study Plan',
         settings: 'Settings',
         update:   'Update Existing Plan',
         planList: 'Saved Plans',
@@ -2470,11 +2449,13 @@ window.StudyApp = {
 
     allocatedTimeLeft() {
       if (!this.examDate || !this.todayKey || typeof StudyPlanner === 'undefined') return null;
-      const today = new Date(this.todayKey + 'T00:00:00Z');
-      const exam  = new Date(this.examDate  + 'T00:00:00Z');
-      if (today >= exam) return 0;
+      // Anchor at startDate if plan hasn't begun yet; otherwise count from today
+      const anchorKey = (this.startDate && this.startDate > this.todayKey) ? this.startDate : this.todayKey;
+      const anchor = new Date(anchorKey + 'T00:00:00Z');
+      const exam   = new Date(this.examDate + 'T00:00:00Z');
+      if (anchor >= exam) return 0;
       return StudyPlanner.countCalendarMinutes(
-        today, exam,
+        anchor, exam,
         this.firstWeek, this.lastWeekComputed, this.rampMode,
         [...(this.breakDays || []), ...(this.trackedBlockedDays || [])]
       );
@@ -2488,7 +2469,7 @@ window.StudyApp = {
     },
 
     studyTimeLeft() {
-      if (!this.hydratedCalendar.length || !this.trackingMode) return null;
+      if (!this.hydratedCalendar.length) return null;
       const today       = this.todayKey;
       const mockMins    = (this.settings && this.settings.mockDuration) || 90;
       const sessionMins = this.unitLength || 20;
@@ -2507,7 +2488,7 @@ window.StudyApp = {
     },
 
     topicsLeft() {
-      if (!this.planResult || !this.hydratedCalendar.length || !this.trackingMode) return null;
+      if (!this.planResult || !this.hydratedCalendar.length) return null;
       const topicIds = this.planResult.topics.map(t => t.id);
       const learnKeys = {}, practiceKeys = {};
       for (const day of this.hydratedCalendar) {
@@ -2527,7 +2508,7 @@ window.StudyApp = {
     },
 
     mocksLeft() {
-      if (!this.planResult || !this.trackingMode) return null;
+      if (!this.planResult) return null;
       const total = this.planResult.mocks.filter(m => m.type === 'mock').length;
       let done = 0;
       for (const day of this.hydratedCalendar) {
@@ -2537,6 +2518,13 @@ window.StudyApp = {
         }
       }
       return Math.max(0, total - done);
+    },
+
+    hasPendingTracking() {
+      return Object.keys(this.completionStatus).some(key => {
+        const dateKey = key.split('|')[0];
+        return !this.lockedDays[dateKey];
+      });
     },
 
     scheduledMocks() {
@@ -2571,12 +2559,17 @@ window.StudyApp = {
 
     fullyDoneDays() {
       const status = this.completionStatus;
+      const locked = this.lockedDays;
       const result = {};
       for (const d of this.hydratedCalendar) {
         const dk = d.date instanceof Date ? d.date.toISOString().slice(0,10) : String(d.date).slice(0,10);
         if (!d.sessions || !d.sessions.length) continue;
+        if (!locked[dk]) continue;
         const merged = this.mergeSessions(d.sessions);
-        if (merged.length > 0 && merged.every(b => status[this.sessionKey(dk, b)] === 'done')) {
+        if (merged.length > 0 && merged.every(b => {
+          const s = status[this.sessionKey(dk, b)];
+          return s === 'done' || s === 'skip';
+        })) {
           result[dk] = true;
         }
       }
@@ -2878,6 +2871,7 @@ window.StudyApp = {
       if (screen === 'step1') {
         this.trackingMode           = false;
         this.activePlanId           = null;
+        this.startDate              = new Date().toISOString().slice(0, 10);
         this.unitLength             = this.settings?.sessionDefault || 20;
         this._hoursAutoScaleAllowed = true;
       }
@@ -3485,7 +3479,7 @@ window.StudyApp = {
         lastWeek:        this.lastWeekComputed,
         rampMode:        this.rampMode,
         srIntervals:     srIntervals.length ? srIntervals : [1, 6, 16, 45, 131],
-        blockedDays:     this.breakDays || [],
+        blockedDays:     [...(this.breakDays || []), ...(this.trackedBlockedDays || [])],
         numMocks:        this.numMocks,
         postMockSameDay: this.settings.postMockSameDay !== false,
         fixedMockDates:  this._buildFixedMockDates(),
@@ -3566,6 +3560,27 @@ window.StudyApp = {
         allocatedHours:       Math.round(allocMins / 60),
         extraHours:           r.lpFits ? 0 : Math.max(0,
                                 Math.round(units.studyUnitsCalculated * unitLen / 60) - Math.round(allocMins / 60)),
+      };
+    },
+
+    // After _runPlanPreview, override the overflow-accuracy fields with real planResult data.
+    // Only called when navigating to the edit page with an existing plan — never from setting watchers.
+    _syncPreviewFromResult() {
+      const r = this.planResult;
+      if (!r || !this.planPreviewData) return;
+      const ov = r.overflow;
+      const y  = r.topics.length;
+      this.planPreviewData = {
+        ...this.planPreviewData,
+        unitLength:       r.sessionLength,
+        lpFits:           !ov.hasOverflow,
+        overflow:         ov,
+        totalTopics:      y,
+        learnComplete:    y - ov.incompleteLearnTopics.length,
+        practiceComplete: y - ov.incompleteMCQTopics.length,
+        extraHours: ov.hasOverflow
+          ? Math.max(0, Math.ceil(ov.totalMissingSessions * r.sessionLength / 60))
+          : 0,
       };
     },
 
@@ -3652,7 +3667,11 @@ window.StudyApp = {
     },
 
     doGeneratePlan() {
-      this.mockDateOverrides = {};
+      this.mockDateOverrides  = {};
+      this.completionStatus   = {};
+      this.lockedDays         = {};
+      this.trackedBlockedDays = [];
+      this.planFitHint        = null;
       const SESSION_MIN     = StudyPlanner.SESSION_MIN     || 10;
       const SESSION_MAX     = StudyPlanner.SESSION_MAX     || 60;
       const SESSION_DEFAULT = this.settings?.sessionDefault || StudyPlanner.SESSION_DEFAULT || 20;
@@ -3670,22 +3689,33 @@ window.StudyApp = {
             this.firstWeek, this.lastWeekComputed, this.rampMode, this.breakDays || []
           );
 
-          // Stage 1: extended simulation with SESSION_DEFAULT
-          let units = StudyPlanner.computeStudyUnits({
+          // Stage 1: raw estimate at SESSION_DEFAULT (mirrors _runPlanPreview Stage 1)
+          const units = StudyPlanner.computeStudyUnits({
             ...this._planConfig(),
             sessionLength: SESSION_DEFAULT,
           });
-
-          // Stage 2: derive T, capped at SESSION_DEFAULT (same logic as plan preview)
-          const rawDerivedT = units.studyUnitsCalculated > 0
+          const rawT = units.studyUnitsCalculated > 0
             ? Math.floor(allocMins / units.studyUnitsCalculated)
             : SESSION_DEFAULT;
-          let derivedT = Math.min(SESSION_DEFAULT, Math.max(SESSION_MIN, rawDerivedT));
+
+          // Stage 2: cap, then reduce T until previewPlan (with mock overhead) says lpFits
+          // Mirror _runPlanPreview: cap at SESSION_DEFAULT during initial auto-calc, SESSION_MAX once
+          // the user has manually committed to their hours (_hoursAutoScaleAllowed = false).
+          const maxT = this._hoursAutoScaleAllowed ? SESSION_DEFAULT : SESSION_MAX;
+          let derivedT = Math.min(maxT, Math.max(SESSION_MIN, rawT));
+          let preview  = StudyPlanner.previewPlan({ ...this._planConfig(), forcedSessionLength: derivedT });
+          if (!preview.lpFits && derivedT > SESSION_MIN) {
+            for (let t = derivedT - 1; t >= SESSION_MIN; t--) {
+              const pt = StudyPlanner.previewPlan({ ...this._planConfig(), forcedSessionLength: t });
+              if (pt.lpFits) { derivedT = t; preview = pt; break; }
+            }
+          }
 
           this.unitLength = derivedT;
           const result = StudyPlanner.generatePlan({ ...this._planConfig(), forcedSessionLength: derivedT });
 
           this._applyPlanResult(result);
+          this.trackingMode = true;
           this.activeTab = 'calendar';
           this.navigate('step4');
         } catch (e) {
@@ -3746,6 +3776,7 @@ window.StudyApp = {
 
           if (found) this.unitLength = result.sessionLength;
           this._applyPlanResult(result);
+          this.trackingMode = true;
           this.activeTab = 'calendar';
           this.navigate('step4');
         } catch (e) {
@@ -3795,6 +3826,7 @@ window.StudyApp = {
           }
 
           this._applyPlanResult(result);
+          this.trackingMode = true;
           this.activeTab = 'calendar';
           this.navigate('step4');
         } catch (e) {
@@ -4465,9 +4497,12 @@ window.StudyApp = {
     // ── New Plan helper ─────────────────────────────────────────────────────
 
     startNewPlan() {
-      this.trackingMode = false;
-      this.activePlanId = null;
+      this.trackingMode     = false;
+      this.activePlanId     = null;
+      this.completionStatus = {};
+      this.lockedDays       = {};
       this.trackedBlockedDays = [];
+      this.startDate = new Date().toISOString().slice(0, 10);
       this.unitLength = 20;
       this.firstWeek = { mon: 60, tue: 60, wed: 60, thu: 60, fri: 60, sat: 60, sun: 60 };
       this.intensityMultiplier = 1;
@@ -4764,12 +4799,30 @@ window.StudyApp = {
         return;
       }
 
-      const allTodayDone = todayBlocks.every(b => this.isSessionDone(this.todayKey, b));
-      if (allTodayDone) {
+      // If today was blocked as a skip-day, proceed from tomorrow without asking
+      if ((this.trackedBlockedDays || []).includes(this.todayKey)) {
         this._executeApplyAndUpdate(this._nextDay(this.todayKey));
         return;
       }
 
+      // If the user interacted with any of today's sessions (deferred or completed),
+      // intent is clear — proceed from tomorrow, no need to ask
+      const anyTodayMarked = todayBlocks.some(b =>
+        this.isSessionDone(this.todayKey, b) || this.isSessionSkipped(this.todayKey, b)
+      );
+      if (anyTodayMarked) {
+        this._executeApplyAndUpdate(this._nextDay(this.todayKey));
+        return;
+      }
+
+      // Today is completely untouched — only show the dialog if past changes exist
+      const hasPastOrTodayChanges =
+        Object.keys(this.completionStatus).some(key => key.split('|')[0] <= this.todayKey) ||
+        (this.trackedBlockedDays || []).some(dk => dk <= this.todayKey);
+      if (!hasPastOrTodayChanges) {
+        this._executeApplyAndUpdate(this.todayKey);
+        return;
+      }
       this.rescheduleFromPromptVisible = true;
     },
 
@@ -4841,15 +4894,37 @@ window.StudyApp = {
             return merged.some(b => this.completionStatus[this.sessionKey(dk, b)] !== undefined);
           });
 
-          // Lock preserved past days — but not today, so the user can still mark sessions
+          // Lock all days before effectiveStartDate (includes today when starting from tomorrow)
           const newLocks = {};
           for (const d of pastHydrated) {
             const dk = toDk(d);
-            if (dk < this.todayKey) newLocks[dk] = true;
+            if (dk < effectiveStartDate) newLocks[dk] = true;
           }
           this.lockedDays = { ...this.lockedDays, ...newLocks };
 
-          const result = StudyPlanner.generatePlan(config);
+          const SESSION_MIN = StudyPlanner.SESSION_MIN || 10;
+          let result = StudyPlanner.generatePlan(config);
+
+          // If overflow, step T down until it fits (mirrors doGeneratePlan reduction loop)
+          this.planFitHint = null;
+          if (result.overflow.hasOverflow) {
+            let foundFit = false;
+            for (let t = config.forcedSessionLength - 1; t >= SESSION_MIN; t--) {
+              const rt = StudyPlanner.generatePlan({ ...config, forcedSessionLength: t });
+              if (!rt.overflow.hasOverflow) {
+                this.unitLength = t;
+                result = rt;
+                foundFit = true;
+                break;
+              }
+            }
+            if (!foundFit) {
+              this.unitLength = SESSION_MIN;
+              result = StudyPlanner.generatePlan({ ...config, forcedSessionLength: SESSION_MIN });
+              this.planFitHint = `Even at the minimum session length of ${SESSION_MIN} min the plan cannot fully fit. Use ⚙ Edit Study Plan to increase your daily study hours.`;
+            }
+          }
+
           this._applyPlanResult(result);
 
           // Splice preserved past entries back in
@@ -5014,6 +5089,8 @@ window.StudyApp = {
             this.applyRecommendedHours();
           }
           this._runPlanPreview();
+          // If editing an existing plan, override optimistic preview with real plan accuracy
+          if (this.planResult) this._syncPreviewFromResult();
         });
       }
     },

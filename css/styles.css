@@ -1600,7 +1600,7 @@ input[type=number] { width: auto; min-width: 80px; }
   font-weight: 400;
 }
 
-.cal-detail-body { padding: 4px 0; }
+.cal-detail-body { padding: 4px 0; min-height: 260px; }
 
 .cal-detail-collapse-btn {
   padding: 2px 8px;
@@ -1770,12 +1770,12 @@ input[type=number] { width: auto; min-width: 80px; }
 }
 
 /* Session row tracking states */
-.session-row--done > * {
+.session-row--done > :not(.session-track) {
   text-decoration: line-through;
   opacity: .6;
 }
 
-.session-row--skip > * {
+.session-row--skip > :not(.session-track) {
   opacity: .45;
   font-style: italic;
 }
