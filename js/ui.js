@@ -4391,7 +4391,10 @@ window.StudyApp = {
       this.initCalWeek();
       this.activeTab = 'calendar';
       this.navigate('step4');
-      this.$nextTick(() => this.renderChart());
+      this.$nextTick(() => {
+        this.renderChart();
+        this._openTodayPopover();
+      });
     },
 
     doDeletePlan(planId) {
