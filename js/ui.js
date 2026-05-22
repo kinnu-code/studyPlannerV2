@@ -3695,12 +3695,12 @@ window.StudyApp = {
     },
 
     _openTodayPopover() {
-      if (this.calendarPopover) return;
       const cells = this.calViewMode === 'week' ? this.calendarWeekCells : this.calendarCells;
-      const todayCell = cells.find(c => c && c.dateKey === this.todayKey);
-      if (todayCell && (todayCell.sessions.length > 0 || this.trackingMode)) {
-        this.calendarPopover = todayCell;
-      }
+      const flat  = cells.filter(c => c);
+      const today = flat.find(c => c.dateKey === this.todayKey);
+      if (today) { this.calendarPopover = today; return; }
+      const firstStudy = flat.find(c => c.sessions.length > 0);
+      this.calendarPopover = firstStudy || flat[0] || null;
     },
 
     renderChart() {
@@ -3791,25 +3791,25 @@ window.StudyApp = {
     prevCalMonth() {
       const d = this.currentCalMonth;
       this.currentCalMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, 1));
-      this.calendarPopover = null;
+      this.$nextTick(() => this._openTodayPopover());
     },
 
     nextCalMonth() {
       const d = this.currentCalMonth;
       this.currentCalMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
-      this.calendarPopover = null;
+      this.$nextTick(() => this._openTodayPopover());
     },
 
     prevCalWeek() {
       const d = this.currentCalWeekStart;
       this.currentCalWeekStart = new Date(d.getTime() - 7 * 86400000);
-      this.calendarPopover = null;
+      this.$nextTick(() => this._openTodayPopover());
     },
 
     nextCalWeek() {
       const d = this.currentCalWeekStart;
       this.currentCalWeekStart = new Date(d.getTime() + 7 * 86400000);
-      this.calendarPopover = null;
+      this.$nextTick(() => this._openTodayPopover());
     },
 
     switchCalView(mode) {
@@ -3852,7 +3852,7 @@ window.StudyApp = {
             this.initCalMonth();
           }
         }
-        this.calendarPopover = null;
+        this.$nextTick(() => this._openTodayPopover());
       }
     },
 
@@ -3873,8 +3873,7 @@ window.StudyApp = {
     },
 
     calCellClick(cell) {
-      if (!cell) { this.calendarPopover = null; return; }
-      if (!this.trackingMode && !cell.sessions.length) { this.calendarPopover = null; return; }
+      if (!cell) return;
       this.calendarPopover = cell;
     },
 
