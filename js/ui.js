@@ -672,7 +672,7 @@ window.StudyApp = {
           <div v-if="studyTimeCalculated !== null || topics.filter(t => !t.isGroup).length > 0" class="plan-stats-bar" style="margin-bottom:8px">
             <div class="plan-stat plan-stat--highlight"
                  :class="planFits === true ? 'plan-stat--green' : planFits === false ? 'plan-stat--red' : ''">
-              <span class="plan-stat-value">~{{ Math.round((allocatedTime ?? 0) / 60) }}h / ~{{ Math.round((studyTimeCalculated ?? 0) / 60) }}h</span>
+              <span class="plan-stat-value">~{{ Math.round((allocatedTime ?? 0) / 60) }}h</span>
               <span class="plan-stat-label">study time allocated</span>
             </div>
             <div class="plan-stat" v-if="recommendedAvailableDays > 0">
@@ -687,10 +687,15 @@ window.StudyApp = {
               <span class="plan-stat-value">{{ numMocks }}</span>
               <span class="plan-stat-label">mock exams</span>
             </div>
+            <div class="plan-stat" v-if="standardTopicMins">
+              <span class="plan-stat-value">{{ standardTopicMins.learn }}min / {{ standardTopicMins.practice }}min</span>
+              <span class="plan-stat-label">typical topic (learn / practice)</span>
+            </div>
           </div>
           <p v-if="planPreviewStatusText" class="plan-status-text"
              :class="planFits === false ? 'plan-status-text--red' : 'plan-status-text--green'"
-             style="margin-bottom:16px">{{ planPreviewStatusText }}</p>
+             style="margin-bottom:8px">{{ planPreviewStatusText }}</p>
+          <p v-if="unitLengthDescriptor" style="margin:0 0 16px;font-size:.85rem;color:var(--c-muted)">{{ unitLengthDescriptor }}</p>
 
           <!-- Break days -->
           <div class="form-group">
@@ -897,7 +902,7 @@ window.StudyApp = {
         <div class="plan-stats-bar" style="margin-bottom:8px">
           <div class="plan-stat plan-stat--highlight"
                :class="(allocatedTimeLeft || 0) >= (studyTimeLeft || 0) ? 'plan-stat--green' : 'plan-stat--red'">
-            <span class="plan-stat-value">~{{ Math.round((allocatedTimeLeft ?? 0) / 60) }}h / ~{{ Math.round((studyTimeLeft ?? 0) / 60) }}h</span>
+            <span class="plan-stat-value">~{{ Math.round((allocatedTimeLeft ?? 0) / 60) }}h</span>
             <span class="plan-stat-label">study time left</span>
           </div>
           <div class="plan-stat">
@@ -912,11 +917,16 @@ window.StudyApp = {
             <span class="plan-stat-value">{{ mocksLeft }}</span>
             <span class="plan-stat-label">mock exams left</span>
           </div>
+          <div class="plan-stat" v-if="standardTopicMins">
+            <span class="plan-stat-value">{{ standardTopicMins.learn }}min / {{ standardTopicMins.practice }}min</span>
+            <span class="plan-stat-label">typical topic (learn / practice)</span>
+          </div>
         </div>
         <!-- Status text -->
         <p v-if="planResultStatusText" class="plan-status-text"
            :class="planResult.overflow.hasOverflow ? 'plan-status-text--red' : 'plan-status-text--green'"
-           style="margin-bottom:12px">{{ planResultStatusText }}</p>
+           style="margin-bottom:8px">{{ planResultStatusText }}</p>
+        <p v-if="unitLengthDescriptor" style="margin:0 0 12px;font-size:.85rem;color:var(--c-muted)">{{ unitLengthDescriptor }}</p>
         <!-- Dismissable warning -->
         <div v-if="manualMarkReminderVisible" class="manual-mark-reminder">
           <span>⚠ Unmarked past sessions will be rescheduled when you click Apply & Update. Mark each activity Done or Skip before applying.</span>
@@ -934,7 +944,7 @@ window.StudyApp = {
           <div class="plan-stats-bar" style="margin-bottom:8px">
             <div class="plan-stat plan-stat--highlight"
                  :class="planResult.overflow.hasOverflow ? 'plan-stat--red' : 'plan-stat--green'">
-              <span class="plan-stat-value">~{{ Math.round((allocatedTime ?? 0) / 60) }}h / ~{{ Math.round((studyTimeCalculated ?? 0) / 60) }}h</span>
+              <span class="plan-stat-value">~{{ Math.round((allocatedTime ?? 0) / 60) }}h</span>
               <span class="plan-stat-label">study time in plan</span>
             </div>
             <div class="plan-stat">
@@ -949,10 +959,15 @@ window.StudyApp = {
               <span class="plan-stat-value">{{ planResult.mocks.filter(m => m.type === 'mock').length }}</span>
               <span class="plan-stat-label">mock exams</span>
             </div>
+            <div class="plan-stat" v-if="standardTopicMins">
+              <span class="plan-stat-value">{{ standardTopicMins.learn }}min / {{ standardTopicMins.practice }}min</span>
+              <span class="plan-stat-label">typical topic (learn / practice)</span>
+            </div>
           </div>
           <p v-if="planResultStatusText" class="plan-status-text"
              :class="planResult.overflow.hasOverflow ? 'plan-status-text--red' : 'plan-status-text--green'"
-             style="margin-bottom:12px">{{ planResultStatusText }}</p>
+             style="margin-bottom:8px">{{ planResultStatusText }}</p>
+          <p v-if="unitLengthDescriptor" style="margin:0 0 12px;font-size:.85rem;color:var(--c-muted)">{{ unitLengthDescriptor }}</p>
         </template>
       </template>
 
@@ -1034,7 +1049,7 @@ window.StudyApp = {
               <span v-if="isBlockedDay(item.dateKey)" class="blocked-badge">Not studying</span>
               <span class="session-count">
                 {{ item.sessions.length }} unit{{ item.sessions.length !== 1 ? 's' : '' }}
-                <span class="day-time-est" v-if="dayEstimatedTime(item.sessions)">· {{ dayEstimatedTime(item.sessions) }}</span>
+                <span class="day-time-est" v-if="dayEstimatedTime(item)">· {{ dayEstimatedTime(item) }}</span>
               </span>
               <button v-if="trackingMode" class="btn btn-ghost btn-sm day-block-btn"
                       :class="{ 'day-block-btn--blocked': isBlockedDay(item.dateKey) }"
@@ -1314,7 +1329,7 @@ window.StudyApp = {
                    @click="calCellClick(cell)">
                 <div class="cal-cell-header">
                   <span class="cal-day-num">{{ cell.day }}</span>
-                  <span class="cal-cell-time" v-if="dayEstimatedTime(cell.sessions)">{{ dayEstimatedTime(cell.sessions) }}</span>
+                  <span class="cal-cell-time" v-if="dayEstimatedTime(cell)">{{ dayEstimatedTime(cell) }}</span>
                 </div>
                 <div class="cal-bars" v-if="cell.activityBars.length">
                   <div v-for="bar in cell.activityBars" :key="bar.type"
@@ -1365,7 +1380,7 @@ window.StudyApp = {
                 <span v-else class="cal-wday-off-label">— off —</span>
               </div>
               <!-- Time -->
-              <div class="cal-wday-time" v-if="cell.isStudyDay">{{ dayEstimatedTime(cell.sessions) }}</div>
+              <div class="cal-wday-time" v-if="cell.isStudyDay">{{ dayEstimatedTime(cell) }}</div>
               <div class="cal-wday-time" v-else></div>
             </div>
           </div>
@@ -1713,7 +1728,7 @@ window.StudyApp = {
             <div v-if="studyTimeCalculated !== null || topics.filter(t => !t.isGroup).length > 0" class="plan-stats-bar" style="margin-bottom:8px">
               <div class="plan-stat plan-stat--highlight"
                    :class="planFits === true ? 'plan-stat--green' : planFits === false ? 'plan-stat--red' : ''">
-                <span class="plan-stat-value">~{{ Math.round((allocatedTime ?? 0) / 60) }}h / ~{{ Math.round((studyTimeCalculated ?? 0) / 60) }}h</span>
+                <span class="plan-stat-value">~{{ Math.round((allocatedTime ?? 0) / 60) }}h</span>
                 <span class="plan-stat-label">study time allocated</span>
               </div>
               <div class="plan-stat" v-if="recommendedAvailableDays > 0">
@@ -1728,10 +1743,15 @@ window.StudyApp = {
                 <span class="plan-stat-value">{{ numMocks }}</span>
                 <span class="plan-stat-label">mock exams</span>
               </div>
+              <div class="plan-stat" v-if="standardTopicMins">
+                <span class="plan-stat-value">{{ standardTopicMins.learn }}min / {{ standardTopicMins.practice }}min</span>
+                <span class="plan-stat-label">typical topic (learn / practice)</span>
+              </div>
             </div>
             <p v-if="planPreviewStatusText" class="plan-status-text"
                :class="planFits === false ? 'plan-status-text--red' : 'plan-status-text--green'"
-               style="margin-bottom:16px">{{ planPreviewStatusText }}</p>
+               style="margin-bottom:8px">{{ planPreviewStatusText }}</p>
+            <p v-if="unitLengthDescriptor" style="margin:0 0 16px;font-size:.85rem;color:var(--c-muted)">{{ unitLengthDescriptor }}</p>
 
             <!-- Break days -->
             <div class="form-group">
@@ -2409,9 +2429,6 @@ window.StudyApp = {
       if (!p.lpFits && p.extraHours > 0) {
         msg += ` You need ~${p.extraHours} more hour${p.extraHours !== 1 ? 's' : ''} to complete the full plan.`;
       }
-      if (p.sessionLength) {
-        msg += ` Estimated time to complete a basic unit of activity with this schedule is ${p.sessionLength} minutes.`;
-      }
       return msg;
     },
 
@@ -2427,9 +2444,6 @@ window.StudyApp = {
       if (ov.hasOverflow && ov.totalMissingSessions > 0) {
         const extra = Math.ceil(ov.totalMissingSessions * this.planResult.sessionLength / 60);
         if (extra > 0) msg += ` You need ~${extra} more hour${extra !== 1 ? 's' : ''} to complete the full plan.`;
-      }
-      if (this.planResult.sessionLength) {
-        msg += ` Estimated time to complete a basic unit of activity with this schedule is ${this.planResult.sessionLength} minutes.`;
       }
       return msg;
     },
@@ -2579,7 +2593,7 @@ window.StudyApp = {
     calDetailTitle() {
       if (!this.calendarPopover) return '';
       const dk = this.calendarPopover.dateKey;
-      const timeStr = this.dayEstimatedTime(this.calendarPopover.sessions || []);
+      const timeStr = this.dayEstimatedTime(this.calendarPopover);
       const prefix = dk === this.todayKey ? "Today's" : this._calShortLabel(dk);
       return timeStr ? `${prefix} Study Time – ${timeStr}` : prefix;
     },
@@ -2648,7 +2662,9 @@ window.StudyApp = {
           ? Object.entries(typeCount).map(([type, n]) => ({ type, color: DOT_COLORS[type] || '#999', pct: (n / totalS) * 100 }))
           : [];
 
-        cells.push({ date, dateKey: dk, day: d, sessions, activityDots, activityBars, isStudyDay: sessions.length > 0 });
+        cells.push({ date, dateKey: dk, day: d, sessions, activityDots, activityBars, isStudyDay: sessions.length > 0,
+                     dailyMinutes: hydr ? (hydr.dailyMinutes ?? 0) : 0,
+                     blockedBy: hydr ? (hydr.blockedBy || null) : null });
       }
 
       // Trailing padding to complete last row
@@ -2684,42 +2700,42 @@ window.StudyApp = {
         dayMap[dk] = day;
       }
 
-      // First pass: build cells and compute dayMins (excluding postMock from time sum)
+      // First pass: build cells with dailyMinutes from the hydrated calendar
       const cells = [];
       for (let i = 0; i < 7; i++) {
-        const date     = new Date(this.currentCalWeekStart.getTime() + i * 86400000);
-        const dk       = date.toISOString().slice(0, 10);
-        const sessions = (dayMap[dk] || {}).sessions || [];
-        const hasPostMock = sessions.some(s => s.activityType === 'postMock');
-        let dayMins = 0;
-        for (const s of sessions) {
-          if (s.activityType === 'postMock') continue;
-          dayMins += s.activityType === 'mock' ? mockMins : unitMins;
-        }
+        const date        = new Date(this.currentCalWeekStart.getTime() + i * 86400000);
+        const dk          = date.toISOString().slice(0, 10);
+        const d           = dayMap[dk];
+        const sessions    = (d || {}).sessions || [];
+        const dailyMinutes = d ? (d.dailyMinutes ?? 0) : 0;
+        const blockedBy   = d ? (d.blockedBy || null) : null;
+        const hasPostMock = blockedBy === 'postMock';
         cells.push({ date, dateKey: dk, day: date.getUTCDate(), dow: DOW_LABELS[i],
-                     sessions, isStudyDay: sessions.length > 0, hasPostMock, dayMins });
+                     sessions, isStudyDay: sessions.length > 0, hasPostMock,
+                     dailyMinutes, blockedBy });
       }
 
-      // Scale reference: longest non-post-mock day
-      const maxMins = Math.max(...cells.filter(c => !c.hasPostMock).map(c => c.dayMins), 1);
+      // Scale reference: busiest regular (non-blocked) study day
+      const maxMins = Math.max(...cells.filter(c => !c.blockedBy).map(c => c.dailyMinutes), 1);
 
       // Second pass: compute relWidth and activityBars
       for (const cell of cells) {
-        if (cell.hasPostMock) {
-          // Post-mock is a full-day activity — always fills 100%
+        if (cell.blockedBy === 'mock') {
           cell.relWidth    = 100;
-          cell.activityBars = [{ type: 'postMock', color: DOT_COLORS.postMock, label: 'full day activity', pct: 100 }];
+          cell.activityBars = [{ type: 'mock', color: DOT_COLORS.mock, label: 'Full day blocked', pct: 100 }];
+        } else if (cell.hasPostMock) {
+          cell.relWidth    = 100;
+          cell.activityBars = [{ type: 'postMock', color: DOT_COLORS.postMock, label: 'Full day blocked', pct: 100 }];
         } else {
-          const typeMins = {};
-          for (const s of cell.sessions) {
-            const m = s.activityType === 'mock' ? mockMins : unitMins;
-            typeMins[s.activityType] = (typeMins[s.activityType] || 0) + m;
-          }
-          cell.relWidth    = cell.dayMins > 0 ? Math.min(100, (cell.dayMins / maxMins) * 100) : 0;
-          cell.activityBars = cell.dayMins > 0
-            ? Object.entries(typeMins).map(([type, mins]) => ({
+          // Proportions by session count
+          const typeCount = {};
+          for (const s of cell.sessions) typeCount[s.activityType] = (typeCount[s.activityType] || 0) + 1;
+          const total = cell.sessions.length;
+          cell.relWidth    = cell.dailyMinutes > 0 ? Math.min(100, (cell.dailyMinutes / maxMins) * 100) : 0;
+          cell.activityBars = total > 0
+            ? Object.entries(typeCount).map(([type, count]) => ({
                 type, color: DOT_COLORS[type] || '#999', label: SEG_LABELS[type] || type,
-                pct: (mins / cell.dayMins) * 100,
+                pct: (count / total) * 100,
               }))
             : [];
         }
@@ -2805,6 +2821,23 @@ window.StudyApp = {
 
     totalScheduleHours() {
       return Math.round(this.schedulePreviewData.reduce((s, d) => s + d.hours, 0));
+    },
+
+    standardTopicMins() {
+      const u = this.unitLength;
+      if (!u || !this.settings) return null;
+      const ln = (this.settings.lnTable?.medium || 3) * u;
+      const pn = (this.settings.pnTable?.medium || 6) * u;
+      return { learn: ln, practice: pn };
+    },
+
+    unitLengthDescriptor() {
+      const u = this.unitLength;
+      if (!u) return '';
+      if (u >= 17) return 'Your schedule allows enough time to learn and practice topics thoroughly.';
+      if (u >= 14) return 'Your schedule is manageable, but some topics may need a more focused pace.';
+      if (u >= 10) return 'Your schedule is quite tight and may require rushing through learning and practice.';
+      return '';
     },
   },
 
@@ -3968,6 +4001,8 @@ window.StudyApp = {
           date: targetDate, dateKey: targetKey,
           sessions: hydr ? hydr.sessions : [],
           isStudyDay: false, activityBars: [],
+          dailyMinutes: hydr ? (hydr.dailyMinutes ?? 0) : 0,
+          blockedBy: hydr ? (hydr.blockedBy || null) : null,
         };
       });
     },
@@ -4012,9 +4047,15 @@ window.StudyApp = {
       this.expandedTopicGroups = {};
     },
 
-    dayEstimatedTime(sessions) {
+    dayEstimatedTime(day) {
+      const sessions  = Array.isArray(day) ? day : (day.sessions || []);
+      const blockedBy = Array.isArray(day) ? null : (day.blockedBy || null);
+      const dailyMins = Array.isArray(day) ? null : (day.dailyMinutes ?? null);
+      if (blockedBy === 'mock' || blockedBy === 'postMock') return 'Full day blocked';
+      if (dailyMins != null && dailyMins > 0) return this.fmtMins(dailyMins);
+      // Fallback for pre-plan / missing data
       const mockMins    = this.settings.mockDuration || 90;
-      const sessionMins = this.planResult?.sessionLength || 20;
+      const sessionMins = this.planResult?.sessionLength || this.unitLength || 20;
       let mins = 0;
       for (const s of sessions) {
         if (s.activityType === 'mock')          { mins += mockMins; }
