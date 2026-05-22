@@ -1204,77 +1204,85 @@ window.StudyApp = {
 
       <!-- ── Tab: Calendar View ── -->
       <div v-if="activeTab === 'calendar'" class="cal-wrap">
-        <div v-if="trackingMode" class="tracking-cal-hint">
-          <button class="btn btn-primary btn-sm tracking-action-btn" @click="doApplyAndUpdate()">↺ Apply & Update</button>
-          <span>Click any day to view or mark activities. Unmarked past sessions will be rescheduled.</span>
-        </div>
 
-        <!-- Day detail panel (shown above calendar when a day is selected) -->
-        <div class="cal-detail" v-if="calendarPopover">
-          <div class="cal-detail-header">
-            <strong>{{ formatDate(calendarPopover.date) }}</strong>
-            <span class="cal-detail-meta">
-              <template v-if="calendarPopover.sessions.length">
-                {{ calendarPopover.sessions.length }} unit{{ calendarPopover.sessions.length !== 1 ? 's' : '' }}
-                <span v-if="dayEstimatedTime(calendarPopover.sessions)">
-                  · {{ dayEstimatedTime(calendarPopover.sessions) }}
-                </span>
-              </template>
-              <template v-else>No units</template>
-            </span>
-            <!-- Future days in tracking: skip day toggle -->
-            <button v-if="trackingMode && calendarPopover.dateKey > todayKey"
-                    class="btn btn-sm tracking-action-btn"
-                    :class="isBlockedDay(calendarPopover.dateKey) ? 'btn-primary' : 'btn-secondary'"
-                    style="margin-left:auto"
-                    @click="toggleBlockedDay(calendarPopover.dateKey)">
-              {{ isBlockedDay(calendarPopover.dateKey) ? '✓ Unblock day' : '✕ Skip day' }}
+        <!-- Day navigation bar + detail panel -->
+        <template v-if="calendarPopover">
+          <!-- Day nav: prev | current | next -->
+          <div class="cal-day-nav">
+            <button class="cal-day-nav-btn" @click="calNavPrevDay()">
+              <span class="cal-nav-arrow">‹</span>
+              <span class="cal-nav-label">{{ calNavPrevLabel }}</span>
+            </button>
+            <div class="cal-day-nav-current">{{ calNavCurrentLabel }}</div>
+            <button class="cal-day-nav-btn cal-day-nav-btn--right" @click="calNavNextDay()">
+              <span class="cal-nav-label">{{ calNavNextLabel }}</span>
+              <span class="cal-nav-arrow">›</span>
             </button>
           </div>
-          <div>
-            <div v-if="isBlockedDay(calendarPopover.dateKey)" class="cal-detail-blocked">
-              This day is marked as a skip day. Apply & Update to reschedule its sessions.
+
+          <!-- Day detail box -->
+          <div class="cal-detail">
+            <div class="cal-detail-header">
+              <strong>{{ calDetailTitle }}</strong>
             </div>
-            <div class="cal-detail-body" v-if="calendarPopover.sessions.length">
-              <!-- Ordered activity bar -->
-              <div class="day-act-bar" style="margin-bottom:8px">
-                <div v-for="(seg, si) in dayActivityBar(calendarPopover.sessions)" :key="si"
-                     class="day-act-seg"
-                     :style="{ background: seg.color, flex: seg.pct }"
-                     :title="seg.label">{{ si + 1 }}</div>
+            <div>
+              <div v-if="isBlockedDay(calendarPopover.dateKey)" class="cal-detail-blocked">
+                This day is marked as a skip day. Submit and update plan to reschedule its sessions.
               </div>
-              <!-- Session rows — grid layout for column alignment -->
-              <div class="sessions-grid">
-                <div v-for="(block, bi) in mergeSessions(calendarPopover.sessions)" :key="bi"
-                     class="session-row"
-                     :class="{
-                       'session-row--done': isSessionDone(calendarPopover.dateKey, block),
-                       'session-row--skip': isSessionSkipped(calendarPopover.dateKey, block),
-                     }">
-                  <span class="session-num">{{ bi + 1 }}</span>
-                  <span class="activity-pill" :class="pillClass(block.activityType)">{{ activityLabel(block.activityType) }}</span>
-                  <span class="session-topic">{{ block.topicTitle || (block.activityType === 'mock' ? 'Mock Exam' : 'Post-Mock Revision') }}</span>
-                  <span class="session-reason">{{ block.reason }}</span>
-                  <span class="session-track">
-                    <template v-if="trackingMode && calendarPopover.dateKey <= todayKey">
-                      <template v-if="lockedDays[calendarPopover.dateKey]">
-                        <span class="track-locked-badge">🔒</span>
-                      </template>
-                      <template v-else>
-                        <button class="btn btn-xs track-btn"
-                                :class="isSessionSkipped(calendarPopover.dateKey, block) ? 'track-btn--skip' : ''"
-                                @click="setSessionStatus(calendarPopover.dateKey, block, 'skip')">✕ Defer</button>
-                        <button class="btn btn-xs track-btn"
-                                :class="isSessionDone(calendarPopover.dateKey, block) ? 'track-btn--done' : ''"
-                                @click="setSessionStatus(calendarPopover.dateKey, block, 'done')">✓ Mark complete</button>
-                      </template>
-                    </template>
-                  </span>
+              <div class="cal-detail-body" v-if="calendarPopover.sessions.length">
+                <div class="day-act-bar" style="margin-bottom:8px">
+                  <div v-for="(seg, si) in dayActivityBar(calendarPopover.sessions)" :key="si"
+                       class="day-act-seg"
+                       :style="{ background: seg.color, flex: seg.pct }"
+                       :title="seg.label">{{ si + 1 }}</div>
                 </div>
+                <div class="sessions-grid">
+                  <div v-for="(block, bi) in mergeSessions(calendarPopover.sessions)" :key="bi"
+                       class="session-row"
+                       :class="{
+                         'session-row--done': isSessionDone(calendarPopover.dateKey, block),
+                         'session-row--skip': isSessionSkipped(calendarPopover.dateKey, block),
+                       }">
+                    <span class="session-num">{{ bi + 1 }}</span>
+                    <span class="activity-pill" :class="pillClass(block.activityType)">{{ activityLabel(block.activityType) }}</span>
+                    <span class="session-topic">{{ block.topicTitle || (block.activityType === 'mock' ? 'Mock Exam' : 'Post-Mock Revision') }}</span>
+                    <span class="session-reason">{{ block.reason }}</span>
+                    <span class="session-track">
+                      <template v-if="trackingMode && calendarPopover.dateKey <= todayKey">
+                        <template v-if="lockedDays[calendarPopover.dateKey]">
+                          <span class="track-locked-badge">🔒</span>
+                        </template>
+                        <template v-else>
+                          <button class="btn btn-xs track-btn"
+                                  :class="isSessionSkipped(calendarPopover.dateKey, block) ? 'track-btn--skip' : ''"
+                                  @click="setSessionStatus(calendarPopover.dateKey, block, 'skip')">✕ Defer</button>
+                          <button class="btn btn-xs track-btn"
+                                  :class="isSessionDone(calendarPopover.dateKey, block) ? 'track-btn--done' : ''"
+                                  @click="setSessionStatus(calendarPopover.dateKey, block, 'done')">✓ Mark complete</button>
+                        </template>
+                      </template>
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="cal-detail-empty">No sessions scheduled.</div>
+
+              <!-- Tracking footer -->
+              <div v-if="trackingMode" class="cal-detail-track-footer">
+                <div class="cal-detail-footer-left">
+                  <button v-if="trackingMode && calendarPopover.dateKey > todayKey"
+                          class="btn btn-sm"
+                          :class="isBlockedDay(calendarPopover.dateKey) ? 'btn-primary' : 'btn-secondary'"
+                          @click="doSkipDayAndUpdate(calendarPopover.dateKey)">
+                    {{ isBlockedDay(calendarPopover.dateKey) ? '✓ Unblock day' : '✕ Skip day and update plan' }}
+                  </button>
+                </div>
+                <span class="cal-detail-footer-hint">Mark activities then submit to reschedule.</span>
+                <button class="btn btn-primary btn-sm" @click="doApplyAndUpdate()">↺ Submit and update plan</button>
               </div>
             </div>
           </div>
-        </div>
+        </template>
 
         <!-- Nav: view toggle + month/week navigation -->
         <div class="cal-nav">
@@ -2551,6 +2559,34 @@ window.StudyApp = {
       return this.currentCalMonth.toLocaleDateString('en-GB', {
         month: 'long', year: 'numeric', timeZone: 'UTC',
       });
+    },
+
+    calNavPrevKey() {
+      if (!this.calendarPopover) return '';
+      const d = new Date(this.calendarPopover.dateKey + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() - 1);
+      return d.toISOString().slice(0, 10);
+    },
+    calNavNextKey() {
+      if (!this.calendarPopover) return '';
+      const d = new Date(this.calendarPopover.dateKey + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + 1);
+      return d.toISOString().slice(0, 10);
+    },
+    calNavPrevLabel() { return this._calShortLabel(this.calNavPrevKey); },
+    calNavNextLabel() { return this._calShortLabel(this.calNavNextKey); },
+    calNavCurrentLabel() {
+      if (!this.calendarPopover) return '';
+      const dk = this.calendarPopover.dateKey;
+      const label = this._calShortLabel(dk);
+      return dk === this.todayKey ? `Today – ${label}` : label;
+    },
+    calDetailTitle() {
+      if (!this.calendarPopover) return '';
+      const dk = this.calendarPopover.dateKey;
+      const timeStr = this.dayEstimatedTime(this.calendarPopover.sessions || []);
+      const prefix = dk === this.todayKey ? "Today's" : this._calShortLabel(dk);
+      return timeStr ? `${prefix} Study Time – ${timeStr}` : prefix;
     },
 
     calDotLegend() {
@@ -3877,6 +3913,51 @@ window.StudyApp = {
       this.calendarPopover = cell;
     },
 
+    _calShortLabel(dateKey) {
+      if (!dateKey) return '';
+      return new Date(dateKey + 'T00:00:00Z')
+        .toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+    },
+
+    calNavPrevDay() { this._calNavGoTo(this.calNavPrevKey); },
+    calNavNextDay() { this._calNavGoTo(this.calNavNextKey); },
+
+    _calNavGoTo(targetKey) {
+      if (!targetKey) return;
+      const targetDate = new Date(targetKey + 'T00:00:00Z');
+
+      // Navigate the view if the target day is outside the current view
+      if (this.calViewMode === 'month') {
+        const tm = new Date(Date.UTC(targetDate.getUTCFullYear(), targetDate.getUTCMonth(), 1));
+        if (tm.getTime() !== this.currentCalMonth?.getTime()) this.currentCalMonth = tm;
+      } else {
+        const ws = this.currentCalWeekStart;
+        const we = ws ? new Date(ws.getTime() + 6 * 86400000) : null;
+        if (!ws || targetDate < ws || targetDate > we) {
+          const dow = (targetDate.getUTCDay() + 6) % 7;
+          this.currentCalWeekStart = new Date(targetDate.getTime() - dow * 86400000);
+        }
+      }
+
+      // After Vue recomputes the cell arrays, pick the real cell (with activityBars etc.)
+      // or fall back to a minimal stub for days outside the plan range
+      this.$nextTick(() => {
+        const cells = this.calViewMode === 'week' ? this.calendarWeekCells : this.calendarCells;
+        const found = cells.find(c => c && c.dateKey === targetKey);
+        if (found) { this.calendarPopover = found; return; }
+        // Stub for out-of-plan days
+        const hydr = this.hydratedCalendar.find(d => {
+          const dk = d.date instanceof Date ? d.date.toISOString().slice(0,10) : String(d.date).slice(0,10);
+          return dk === targetKey;
+        });
+        this.calendarPopover = {
+          date: targetDate, dateKey: targetKey,
+          sessions: hydr ? hydr.sessions : [],
+          isStudyDay: false, activityBars: [],
+        };
+      });
+    },
+
     // ── Day-by-day collapse ─────────────────────────────────────────────────
 
     toggleDay(dateKey) {
@@ -4506,6 +4587,18 @@ window.StudyApp = {
         this.trackedBlockedDays = [...this.trackedBlockedDays, dateKey];
       }
       this._savePlanToStorage();
+    },
+
+    doSkipDayAndUpdate(dateKey) {
+      if (this.isBlockedDay(dateKey)) {
+        this.toggleBlockedDay(dateKey);
+      } else {
+        if (!this.trackedBlockedDays.includes(dateKey)) {
+          this.trackedBlockedDays = [...this.trackedBlockedDays, dateKey];
+          this._savePlanToStorage();
+        }
+        this.doApplyAndUpdate();
+      }
     },
 
     // ── Tracking: recalculate ───────────────────────────────────────────────
